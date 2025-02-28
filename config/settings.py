@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -37,9 +39,19 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    
+    #third party apps
+    'rest_framework_simplejwt', #JWT 인증
+    "rest_framework", #DRF
+    "corsheaders", #CORS 허용
+    
+    
+    #my apps
+    "rag"
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware", #CORS 허용
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -49,7 +61,33 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "config.urls"
+ROOT_URLCONF = "config.urls" 
+
+
+CORS_ALLOW_ALL_ORIGINS = True #TODO: 모든 주소에서 접근 가능하도록하면 코드. 배포 후 주석처리
+CORS_ALLOW_CREDENTIALS = True #TODO: jwt 인증안해도 통과 되는 코드. 배포 후 주석처리
+
+#TODO: 모든 헤더 허용. 배포 후 주석처리
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "content-type",
+]
+
+
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated', #인증 필요한 요청에 대해서 인증 필요 메시지 반환
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication', #JWT 인증 사용
+    ],
+}
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),  # 액세스 토큰 유효 기간 1일
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # 리프레시 토큰 유효 기간 30일 
+    'ROTATE_REFRESH_TOKENS': True,  # 리프레시 토큰 회전 사용, 사용한 리프레시 토큰 블랙리스트 처리
+    'BLACKLIST_AFTER_ROTATION': True,  # 회전 후 이전 엑세스 토큰 블랙리스트 처리
+}
 
 TEMPLATES = [
     {
