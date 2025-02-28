@@ -1,0 +1,1 @@
+{"message":"자동 임베딩 완료","total_files_found":1,"new_files_processed":1,"skipped_files":0,"failed_files":0,"total_documents_embedded":86,"processing_time_seconds":3.6,"file_details":[{"file_path":"data/rdf/wellness.rdf","file_type":"rdf","status":"success","documents_embedded":86}]}
