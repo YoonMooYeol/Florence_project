@@ -22,4 +22,5 @@ from django.urls import path, include
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("v1/rag/", include("rag.urls")),
+    path("v1/sanitization/", include("sanitization.urls")),  # 산모 대상 LLM 서비스 앱
 ]

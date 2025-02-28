@@ -1,10 +1,11 @@
 from django.urls import path
-from .views import RAGSetupView, RAGQueryView, RAGJsonSetupView, RAGBulkJsonSetupView, RAGEmotionQueryView
+from .views import (
+    RAGQueryView, RAGAutoEmbedView, RDFQueryView, RDFAnalysisView
+)
 
 urlpatterns = [
-    path('setup/', RAGSetupView.as_view(), name='rag-setup'),
     path('query/', RAGQueryView.as_view(), name='rag-query'),
-    path('json-setup/', RAGJsonSetupView.as_view(), name='rag-json-setup'),
-    path('bulk-json-setup/', RAGBulkJsonSetupView.as_view(), name='rag-bulk-json-setup'),
-    path('emotion-query/', RAGEmotionQueryView.as_view(), name='rag-emotion-query'),
+    path('auto-embed/', RAGAutoEmbedView.as_view(), name='rag-auto-embed'),
+    path('rdf-query/', RDFQueryView.as_view(), name='rdf-query'),
+    path('rdf-analysis/', RDFAnalysisView.as_view(), name='rdf-analysis'),
 ]
