@@ -48,7 +48,8 @@ INSTALLED_APPS = [
     
     #my apps
     "rag",
-    "sanitization"  # 산모 대상 LLM 서비스 앱
+    "sanitization",  # 산모 대상 LLM 서비스 앱
+    "accounts",
 ]
 
 MIDDLEWARE = [
@@ -64,11 +65,10 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls" 
 
+#TODO: 배포 후 주석처리
 
-CORS_ALLOW_ALL_ORIGINS = True #TODO: 모든 주소에서 접근 가능하도록하면 코드. 배포 후 주석처리
-CORS_ALLOW_CREDENTIALS = True #TODO: jwt 인증안해도 통과 되는 코드. 배포 후 주석처리
-
-#TODO: 모든 헤더 허용. 배포 후 주석처리
+CORS_ALLOW_ALL_ORIGINS = True #TODO: 모든 도메인에서 접근 가능하도록 하는 코드. 배포 후 주석처리
+CORS_ALLOW_CREDENTIALS = True #TODO: 쿠키, 인증 토큰 같은 민감한 인증 정보를 포함한 요청을 허용.
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "content-type",
 ]
@@ -76,11 +76,11 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',  #TODO: JWT 인증 없이 접근 가능. 배포 후 주석처리
         # 'rest_framework.permissions.IsAuthenticated', #인증 필요한 요청에 대해서 인증 필요 메시지 반환
-        'rest_framework.permissions.AllowAny',  # 모든 요청에 대해 인증 없이 접근 허용
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        # 'rest_framework_simplejwt.authentication.JWTAuthentication', #JWT 인증 사용
+        'rest_framework_simplejwt.authentication.JWTAuthentication', #JWT 인증 사용 활성화
     ],
 }
 
