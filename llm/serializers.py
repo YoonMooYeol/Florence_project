@@ -1,5 +1,10 @@
 from rest_framework import serializers
 from .models import LLMConversation
+import uuid
+import logging
+
+# 로깅 설정
+logger = logging.getLogger(__name__)
 
 class QuerySerializer(serializers.Serializer):
     """
@@ -29,6 +34,62 @@ class QuerySerializer(serializers.Serializer):
     
     class Meta:
         fields = ['user_id', 'query_text', 'preferences', 'pregnancy_week']
+    
+    def validate_user_id(self, value):
+        """
+        user_id 필드 검증 - UUID 형식인지 확인
+        
+        Args:
+            value (str): 검증할 user_id 값
+            
+        Returns:
+            str: 검증된 user_id 값
+            
+        Raises:
+            serializers.ValidationError: UUID 형식이 아닌 경우
+        """
+        logger.debug(f"validate_user_id 호출: 원본 값 = '{value}'")
+        
+        if not value:
+            logger.warning("사용자 ID가 비어 있습니다.")
+            raise serializers.ValidationError("사용자 ID는 필수입니다.")
+        
+        # 공백 제거 및 소문자로 변환
+        original_value = value
+        value = value.strip().lower()
+        if original_value != value:
+            logger.debug(f"정규화 후 값 변경: '{original_value}' -> '{value}'")
+        
+        # 끝에 슬래시가 있으면 제거
+        if value.endswith('/'):
+            original_value = value
+            value = value[:-1]
+            logger.debug(f"슬래시 제거 후: '{original_value}' -> '{value}'")
+        
+        # 하이픈이 없는 경우 추가 (32자리 문자열인 경우)
+        if len(value) == 32 and '-' not in value:
+            try:
+                original_value = value
+                value = f"{value[0:8]}-{value[8:12]}-{value[12:16]}-{value[16:20]}-{value[20:32]}"
+                logger.debug(f"하이픈 추가 후: '{original_value}' -> '{value}'")
+            except IndexError as e:
+                logger.warning(f"하이픈 추가 중 오류: {str(e)}, 값: '{value}'")
+                pass
+        
+        try:
+            # UUID 형식인지 확인
+            uuid_obj = uuid.UUID(value)
+            normalized_uuid = str(uuid_obj)
+            logger.debug(f"UUID 변환 성공: '{value}' -> '{normalized_uuid}'")
+            
+            # 정규화된 UUID 문자열 반환
+            return normalized_uuid
+        except ValueError as e:
+            logger.warning(f"유효하지 않은 UUID 형식: '{value}', 오류: {str(e)}")
+            raise serializers.ValidationError("유효하지 않은 UUID 형식입니다.")
+        except Exception as e:
+            logger.error(f"UUID 검증 중 오류 발생: {str(e)}, 값: '{value}'")
+            raise serializers.ValidationError(f"UUID 검증 중 오류가 발생했습니다: {str(e)}")
 
 class ResponseSerializer(serializers.Serializer):
     """
@@ -76,7 +137,14 @@ class LLMConversationSerializer(serializers.ModelSerializer):
     def get_name(self, obj):
         """사용자 이름 반환 (사용자가 없는 경우 빈 문자열)"""
         if not hasattr(obj, '_cached_name'):
-            obj._cached_name = obj.user.name if obj.user else ''
+            if obj.user:
+                obj._cached_name = obj.user.name
+            else:
+                # 사용자 정보에서 이름 추출 시도
+                if obj.user_info and 'name' in obj.user_info:
+                    obj._cached_name = obj.user_info.get('name', '')
+                else:
+                    obj._cached_name = ''
         return obj._cached_name
 
 class LLMConversationEditSerializer(serializers.Serializer):

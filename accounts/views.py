@@ -8,6 +8,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 from rest_framework_simplejwt.exceptions import TokenError
 import uuid
+import logging
+
+# 로깅 설정
+logger = logging.getLogger(__name__)
 
 class RegisterView(generics.CreateAPIView):
     """회원가입 API"""
@@ -32,14 +36,19 @@ class LoginView(generics.GenericAPIView):
         email = serializer.validated_data['email']
         password = serializer.validated_data['password']
 
+        logger.debug(f"로그인 시도: 이메일={email}")
+
         try:
             user = User.objects.get(email=email)
+            logger.debug(f"사용자 조회 성공: {user.name}, UUID={user.user_id}")
+            
             if check_password(password, user.password):
                 # 직접 토큰 생성
                 refresh_token = self._generate_refresh_token(user)
                 access_token = self._generate_access_token(user, refresh_token)
                 
-                return Response({
+                # 응답 데이터 준비
+                response_data = {
                     'message': '로그인 성공',
                     'user_id': str(user.user_id),
                     'name': user.name,
@@ -48,10 +57,15 @@ class LoginView(generics.GenericAPIView):
                         'refresh': str(refresh_token),
                         'access': str(access_token),
                     }
-                }, status=status.HTTP_200_OK)
+                }
+                
+                logger.debug(f"로그인 성공: user_id={response_data['user_id']}")
+                return Response(response_data, status=status.HTTP_200_OK)
             else:
+                logger.warning(f"비밀번호 불일치: 이메일={email}")
                 return Response({'error': '비밀번호가 일치하지 않습니다.'}, status=status.HTTP_400_BAD_REQUEST)
         except User.DoesNotExist:
+            logger.warning(f"사용자 없음: 이메일={email}")
             return Response({'error': '사용자를 찾을 수 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
     
     def _generate_refresh_token(self, user):
@@ -59,12 +73,14 @@ class LoginView(generics.GenericAPIView):
         refresh_token = RefreshToken()
         
         # 토큰에 사용자 정보 추가
-        refresh_token['user_id'] = str(user.user_id)
+        user_id_str = str(user.user_id)
+        refresh_token['user_id'] = user_id_str
         refresh_token['name'] = user.name
         refresh_token['email'] = user.email
         refresh_token['is_pregnant'] = user.is_pregnant
         refresh_token['token_type'] = 'refresh'
         
+        logger.debug(f"리프레시 토큰 생성: user_id={user_id_str}")
         return refresh_token
     
     def _generate_access_token(self, user, refresh_token):
@@ -72,12 +88,14 @@ class LoginView(generics.GenericAPIView):
         access_token = refresh_token.access_token
         
         # 토큰에 사용자 정보 추가
-        access_token['user_id'] = str(user.user_id)
+        user_id_str = str(user.user_id)
+        access_token['user_id'] = user_id_str
         access_token['name'] = user.name
         access_token['email'] = user.email
         access_token['is_pregnant'] = user.is_pregnant
         access_token['token_type'] = 'access'
         
+        logger.debug(f"액세스 토큰 생성: user_id={user_id_str}")
         return access_token
 
 class TokenRefreshView(generics.GenericAPIView):
@@ -92,6 +110,7 @@ class TokenRefreshView(generics.GenericAPIView):
         refresh_token = request.data.get('refresh')
         
         if not refresh_token:
+            logger.warning("리프레시 토큰이 제공되지 않았습니다.")
             return Response(
                 {"error": "리프레시 토큰이 필요합니다."},
                 status=status.HTTP_400_BAD_REQUEST
@@ -103,8 +122,10 @@ class TokenRefreshView(generics.GenericAPIView):
             
             # 토큰에서 사용자 정보 추출
             user_id = token.get('user_id')
+            logger.debug(f"토큰에서 추출한 user_id: {user_id}")
             
             if not user_id:
+                logger.warning("토큰에 user_id가 없습니다.")
                 return Response(
                     {"error": "유효하지 않은 토큰입니다."},
                     status=status.HTTP_400_BAD_REQUEST
@@ -113,28 +134,34 @@ class TokenRefreshView(generics.GenericAPIView):
             try:
                 # 사용자 조회
                 user = User.objects.get(user_id=uuid.UUID(user_id))
+                logger.debug(f"사용자 조회 성공: {user.name}, UUID={user.user_id}")
                 
                 # 새로운 액세스 토큰 생성
                 access_token = token.access_token
                 
                 # 사용자 정보 추가
-                access_token['user_id'] = str(user.user_id)
+                user_id_str = str(user.user_id)
+                access_token['user_id'] = user_id_str
                 access_token['name'] = user.name
                 access_token['email'] = user.email
                 access_token['is_pregnant'] = user.is_pregnant
                 access_token['token_type'] = 'access'
+                
+                logger.debug(f"새 액세스 토큰 생성: user_id={user_id_str}")
                 
                 return Response({
                     'access': str(access_token)
                 }, status=status.HTTP_200_OK)
                 
             except User.DoesNotExist:
+                logger.warning(f"사용자를 찾을 수 없습니다: user_id={user_id}")
                 return Response(
                     {"error": "사용자를 찾을 수 없습니다."},
                     status=status.HTTP_404_NOT_FOUND
                 )
                 
-        except TokenError:
+        except TokenError as e:
+            logger.warning(f"토큰 오류: {str(e)}")
             return Response(
                 {"error": "유효하지 않은 토큰입니다."},
                 status=status.HTTP_400_BAD_REQUEST

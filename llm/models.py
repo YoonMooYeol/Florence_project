@@ -36,7 +36,9 @@ class LLMConversation(models.Model):
         on_delete=models.CASCADE,
         related_name='llm_conversations',
         help_text="대화를 생성한 사용자",
-        db_index=True
+        db_index=True,
+        null=True,
+        blank=True
     )
     query = models.TextField(
         verbose_name='사용자 질문',

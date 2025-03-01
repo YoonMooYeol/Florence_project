@@ -41,18 +41,37 @@ def get_user_from_uuid(user_id):
     Returns:
         tuple: (User 객체 또는 None, 오류 메시지 또는 None)
     """
+    if not user_id:
+        logger.warning("사용자 ID가 제공되지 않았습니다.")
+        return None, "사용자 ID가 필요합니다."
+        
     # user_id 값 끝에 슬래시(/)가 있으면 제거
     if user_id and user_id.endswith('/'):
         user_id = user_id[:-1]
+    
+    # 공백 제거 및 소문자로 변환하여 정규화
+    user_id = user_id.strip().lower()
+    
+    # 하이픈이 없는 경우 추가 (32자리 문자열인 경우)
+    if len(user_id) == 32 and '-' not in user_id:
+        try:
+            user_id = f"{user_id[0:8]}-{user_id[8:12]}-{user_id[12:16]}-{user_id[16:20]}-{user_id[20:32]}"
+        except IndexError:
+            pass
+    
+    logger.debug(f"정규화된 사용자 ID: {user_id}")
         
     try:
         # UUID 문자열을 UUID 객체로 변환
         user_id_uuid = uuid.UUID(user_id)
+        logger.debug(f"UUID 변환 성공: {user_id_uuid}")
+        
         # User 모델에서 user_id 필드로 사용자 조회
         user = User.objects.get(user_id=user_id_uuid)
+        logger.debug(f"사용자 조회 성공: {user.name} ({user.email})")
         return user, None
-    except ValueError:
-        logger.warning(f"유효하지 않은 UUID 형식: {user_id}")
+    except ValueError as e:
+        logger.warning(f"유효하지 않은 UUID 형식: {user_id}, 오류: {str(e)}")
         return None, "유효하지 않은 UUID 형식입니다."
     except User.DoesNotExist:
         logger.warning(f"사용자 ID {user_id}를 찾을 수 없습니다.")
@@ -72,22 +91,44 @@ def get_conversation_by_id(user, conversation_id):
     Returns:
         tuple: (LLMConversation 객체 또는 None, 오류 메시지 또는 None)
     """
+    if not conversation_id:
+        logger.warning("대화 ID가 제공되지 않았습니다.")
+        return None, "대화 ID가 필요합니다."
+        
     # conversation_id 값 끝에 슬래시(/)가 있으면 제거
     if conversation_id and conversation_id.endswith('/'):
         conversation_id = conversation_id[:-1]
+    
+    # 공백 제거 및 소문자로 변환하여 정규화
+    conversation_id = conversation_id.strip().lower()
+    
+    # 하이픈이 없는 경우 추가 (32자리 문자열인 경우)
+    if len(conversation_id) == 32 and '-' not in conversation_id:
+        try:
+            conversation_id = f"{conversation_id[0:8]}-{conversation_id[8:12]}-{conversation_id[12:16]}-{conversation_id[16:20]}-{conversation_id[20:32]}"
+        except IndexError:
+            pass
+    
+    logger.debug(f"정규화된 대화 ID: {conversation_id}")
         
     try:
         # UUID 형식인지 확인
         conversation_uuid = uuid.UUID(conversation_id)
+        logger.debug(f"UUID 변환 성공: {conversation_uuid}")
+        
         # UUID로 대화 조회
         try:
             conversation = LLMConversation.objects.select_related('user').get(id=conversation_uuid, user=user)
+            logger.debug(f"대화 조회 성공: {conversation.id}")
             return conversation, None
         except LLMConversation.DoesNotExist:
+            logger.warning(f"ID가 {conversation_id}인 대화를 찾을 수 없습니다.")
             return None, f"ID가 {conversation_id}인 대화를 찾을 수 없습니다."
-    except ValueError:
+    except ValueError as e:
+        logger.warning(f"유효하지 않은 대화 ID 형식: {conversation_id}, 오류: {str(e)}")
         return None, "유효하지 않은 대화 ID 형식입니다. UUID 형식이어야 합니다."
     except Exception as e:
+        logger.error(f"대화 조회 중 오류 발생: {str(e)}")
         return None, f"대화 조회 중 오류가 발생했습니다: {str(e)}"
 
 class MaternalHealthLLMView(APIView):
@@ -132,9 +173,37 @@ class MaternalHealthLLMView(APIView):
         # 성능 측정 시작
         start_time = time.time()
         
+        # 디버깅: 요청 데이터 로깅
+        logger.debug(f"요청 데이터: {request.data}")
+        logger.debug(f"요청 헤더: {request.headers}")
+        
+        # 인증 정보 확인
+        auth_header = request.headers.get('Authorization', '')
+        logger.debug(f"인증 헤더: {auth_header}")
+        
+        # 토큰에서 user_id 추출
+        token_user_id = None
+        if request.user and request.user.is_authenticated:
+            logger.debug(f"인증된 사용자: {request.user.email}, UUID: {request.user.user_id}")
+            token_user_id = str(request.user.user_id)
+            # 토큰에서 직접 user_id 추출 시도
+            try:
+                from rest_framework_simplejwt.authentication import JWTAuthentication
+                jwt_auth = JWTAuthentication()
+                if auth_header.startswith('Bearer '):
+                    token = auth_header.split(' ')[1]
+                    validated_token = jwt_auth.get_validated_token(token)
+                    logger.debug(f"토큰 내용: {validated_token}")
+                    if 'user_id' in validated_token:
+                        token_user_id = validated_token['user_id']
+                        logger.debug(f"토큰에서 직접 추출한 user_id: {token_user_id}")
+            except Exception as e:
+                logger.warning(f"토큰 검증 중 오류: {str(e)}")
+        
         # 1. 요청 데이터 검증
         serializer = QuerySerializer(data=request.data)
         if not serializer.is_valid():
+            logger.warning(f"요청 데이터 검증 실패: {serializer.errors}")
             return Response(
                 {"error": "잘못된 요청 형식입니다.", "details": serializer.errors},
                 status=status.HTTP_400_BAD_REQUEST
@@ -142,14 +211,25 @@ class MaternalHealthLLMView(APIView):
         
         # 2. 요청 데이터 추출
         validated_data = serializer.validated_data
-        user_id = validated_data.get('user_id')
+        request_user_id = validated_data.get('user_id')
+        logger.debug(f"요청에서 추출한 user_id: {request_user_id}")
         query_text = validated_data.get('query_text')
         preferences = validated_data.get('preferences', {})
         pregnancy_week = validated_data.get('pregnancy_week')
         
-        # 3. 토큰에서 사용자 정보 추출 (user_id가 없는 경우)
-        if not user_id and request.user and request.user.is_authenticated:
-            user_id = str(request.user.user_id)
+        # 3. 토큰의 user_id를 우선 사용
+        user_id = token_user_id if token_user_id else request_user_id
+        
+        # 요청의 user_id와 토큰의 user_id가 다른 경우 경고 로그 기록
+        if token_user_id and request_user_id and token_user_id != request_user_id:
+            logger.warning(f"요청의 user_id({request_user_id})와 토큰의 user_id({token_user_id})가 다릅니다. 토큰의 값을 사용합니다.")
+        
+        # 사용자 ID가 여전히 없는 경우 오류 반환
+        if not user_id:
+            return Response(
+                {"error": "사용자 ID가 필요합니다."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # 4. 사용자 정보 생성 또는 업데이트
         user_info = self._get_or_create_user_info(user_id, preferences, pregnancy_week)
@@ -205,6 +285,7 @@ class MaternalHealthLLMView(APIView):
                 user_info['name'] = user.name
                 user_info['email'] = user.email
                 user_info['is_pregnant'] = user.is_pregnant
+                user_info['user_id'] = str(user.user_id)  # UUID를 문자열로 변환하여 추가
                 
                 # 임신 여부에 따라 추가 정보 설정
                 if user.is_pregnant:
@@ -214,6 +295,9 @@ class MaternalHealthLLMView(APIView):
                 
                 # 사용자 선호도 정보 추가
                 user_info.update(preferences)
+            else:
+                # 사용자 조회 실패 시 로그 기록
+                logger.warning(f"사용자 정보 조회 실패: {error}, user_id: {user_id}")
         
         # 임신 주차 정보가 직접 제공된 경우 (사용자 정보가 없어도 설정)
         if pregnancy_week is not None and 'pregnancy_week' not in user_info:
@@ -237,26 +321,38 @@ class MaternalHealthLLMView(APIView):
             # 사용자 객체 조회
             user = None
             if user_id:
-                user, _ = get_user_from_uuid(user_id)
+                user, error = get_user_from_uuid(user_id)
+                if not user:
+                    logger.warning(f"대화 저장 중 사용자 조회 실패: {error}, user_id: {user_id}")
+                    # 사용자가 없는 경우 대화를 저장하지 않고 종료
+                    return
+            else:
+                # user_id가 없는 경우 대화를 저장하지 않고 종료
+                logger.warning("대화 저장 중 사용자 ID가 제공되지 않았습니다.")
+                return
             
             # 사용자 정보 및 임신 주차 정보 준비
             user_info = {}
             if user:
                 user_info['name'] = user.name
                 user_info['is_pregnant'] = user.is_pregnant
+                user_info['user_id'] = str(user.user_id)  # UUID를 문자열로 변환하여 추가
                 
-            # 임신 주차 정보가 result에 포함되어 있으면 추가
-            if 'user_info' in result and 'pregnancy_week' in result['user_info']:
-                user_info['pregnancy_week'] = result['user_info']['pregnancy_week']
-            
-            # 대화 저장 - query_type과 keywords 필드 제거
-            conversation = LLMConversation.objects.create(
-                user=user,
-                query=query_text,
-                response=result['response'],
-                user_info=user_info
-            )
-            logger.info(f"대화 저장 완료: {conversation.id}")
+                # 임신 주차 정보가 result에 포함되어 있으면 추가
+                if 'user_info' in result and 'pregnancy_week' in result['user_info']:
+                    user_info['pregnancy_week'] = result['user_info']['pregnancy_week']
+                
+                # 대화 저장 - query_type과 keywords 필드 제거
+                conversation = LLMConversation.objects.create(
+                    user=user,
+                    query=query_text,
+                    response=result['response'],
+                    user_info=user_info
+                )
+                logger.info(f"대화 저장 완료: {conversation.id}")
+            else:
+                # 사용자가 없는 경우 대화를 저장하지 않고 로그 기록
+                logger.warning("대화 저장 중 사용자 객체가 없습니다.")
             
             # 데이터베이스 연결 닫기 (스레드에서 사용 후)
             connection.close()
@@ -313,19 +409,26 @@ class LLMConversationViewSet(APIView):
         # 2. 토큰에서 사용자 정보 추출 (user_id가 없는 경우)
         if not user_id and request.user and request.user.is_authenticated:
             user_id = str(request.user.user_id)
+            logger.debug(f"토큰에서 추출한 사용자 ID: {user_id}")
         
-        # 3. user_id 값 끝에 슬래시(/)가 있으면 제거
-        if user_id and user_id.endswith('/'):
-            user_id = user_id[:-1]
+        # 사용자 ID가 여전히 없는 경우 오류 반환
+        if not user_id:
+            return Response(
+                {"error": "사용자 ID가 필요합니다."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
+        # 3. 사용자 조회
+        user, error = get_user_from_uuid(user_id)
+        if not user:
+            logger.warning(f"사용자 조회 실패: {error}, user_id: {user_id}")
+            return Response(
+                {"error": error},
+                status=status.HTTP_404_NOT_FOUND
+            )
+            
         # 4. 쿼리 필터 구성
-        filters = {}
-        if user_id:
-            user, error = get_user_from_uuid(user_id)
-            if not user:
-                # 사용자를 찾을 수 없는 경우 빈 결과 반환
-                return Response([], status=status.HTTP_200_OK)
-            filters['user'] = user
+        filters = {'user': user}
             
         if query_type:
             filters['query_type'] = query_type
@@ -372,6 +475,7 @@ class LLMConversationViewSet(APIView):
             user_id = request.query_params.get('user_id')
             if not user_id and request.user and request.user.is_authenticated:
                 user_id = str(request.user.user_id)
+                logger.debug(f"토큰에서 추출한 사용자 ID: {user_id}")
                 
             if not user_id:
                 return Response(
@@ -382,6 +486,7 @@ class LLMConversationViewSet(APIView):
             # 3. 사용자 조회
             user, error = get_user_from_uuid(user_id)
             if not user:
+                logger.warning(f"사용자 조회 실패: {error}, user_id: {user_id}")
                 return Response(
                     {"error": error},
                     status=status.HTTP_404_NOT_FOUND
@@ -402,6 +507,7 @@ class LLMConversationViewSet(APIView):
             # 5. 대화 조회
             conversation, error = get_conversation_by_id(user, conversation_id)
             if not conversation:
+                logger.warning(f"대화 조회 실패: {error}, conversation_id: {conversation_id}")
                 return Response(
                     {"error": error},
                     status=status.HTTP_404_NOT_FOUND
@@ -418,7 +524,8 @@ class LLMConversationViewSet(APIView):
             user_id_str = str(user.user_id)
             user_info = {
                 'name': user.name,
-                'is_pregnant': user.is_pregnant
+                'is_pregnant': user.is_pregnant,
+                'user_id': user_id_str  # UUID를 문자열로 변환하여 추가
             }
             
             # 9. LLM 서비스 인스턴스 생성 (싱글톤 패턴 사용)
@@ -434,8 +541,8 @@ class LLMConversationViewSet(APIView):
             
             # 12. 응답 직렬화
             response_data = {
-                'id': conversation.id,
-                'user_id': user_id,
+                'id': str(conversation.id),  # UUID를 문자열로 변환
+                'user_id': user_id_str,
                 'query': conversation.query,
                 'response': conversation.response,
                 'user_info': conversation.user_info,
@@ -475,6 +582,7 @@ class LLMConversationViewSet(APIView):
             user_id = request.query_params.get('user_id')
             if not user_id and request.user and request.user.is_authenticated:
                 user_id = str(request.user.user_id)
+                logger.debug(f"토큰에서 추출한 사용자 ID: {user_id}")
                 
             if not user_id:
                 return Response(
@@ -485,6 +593,7 @@ class LLMConversationViewSet(APIView):
             # 2. 사용자 조회
             user, error = get_user_from_uuid(user_id)
             if not user:
+                logger.warning(f"사용자 조회 실패: {error}, user_id: {user_id}")
                 return Response(
                     {"error": error},
                     status=status.HTTP_404_NOT_FOUND
@@ -519,6 +628,7 @@ class LLMConversationViewSet(APIView):
             # 5. 대화 조회
             conversation, error = get_conversation_by_id(user, conversation_id)
             if not conversation:
+                logger.warning(f"대화 조회 실패: {error}, conversation_id: {conversation_id}")
                 return Response(
                     {"error": error},
                     status=status.HTTP_404_NOT_FOUND
@@ -534,7 +644,7 @@ class LLMConversationViewSet(APIView):
                 return Response(response_serializer.data, status=status.HTTP_200_OK)
             else:
                 # 대화 완전 삭제
-                query_type = conversation.query_type
+                query_type = getattr(conversation, 'query_type', None)
                 conversation.delete()
                 
                 return Response(
