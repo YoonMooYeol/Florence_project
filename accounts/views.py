@@ -6,10 +6,8 @@ from .serializers import UserSerializer, LoginSerializer
 from django.contrib.auth.hashers import check_password
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
-from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.exceptions import TokenError
 import uuid
-import datetime
 
 class RegisterView(generics.CreateAPIView):
     """회원가입 API"""
@@ -36,7 +34,7 @@ class LoginView(generics.GenericAPIView):
 
         try:
             user = User.objects.get(email=email)
-            if check_password(password, user.password_hash):
+            if check_password(password, user.password):
                 # 직접 토큰 생성
                 refresh_token = self._generate_refresh_token(user)
                 access_token = self._generate_access_token(user, refresh_token)
