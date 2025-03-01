@@ -1,10 +1,16 @@
 from django.urls import path
-from .views import RAGSetupView, RAGQueryView, RAGJsonSetupView, RAGBulkJsonSetupView, RAGEmotionQueryView
+from .views import (
+    RAGQueryView, RAGAutoEmbedView, RAGViewSet
+)
+from rest_framework.routers import DefaultRouter
+from django.urls import include
+
+# 라우터 설정
+router = DefaultRouter()
+router.register(r'history', RAGViewSet, basename='rag-history')
 
 urlpatterns = [
-    path('setup/', RAGSetupView.as_view(), name='rag-setup'),
+    path('', include(router.urls)),
     path('query/', RAGQueryView.as_view(), name='rag-query'),
-    path('json-setup/', RAGJsonSetupView.as_view(), name='rag-json-setup'),
-    path('bulk-json-setup/', RAGBulkJsonSetupView.as_view(), name='rag-bulk-json-setup'),
-    path('emotion-query/', RAGEmotionQueryView.as_view(), name='rag-emotion-query'),
+    path('auto-embed/', RAGAutoEmbedView.as_view(), name='rag-auto-embed'),
 ]
