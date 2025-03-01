@@ -4,19 +4,19 @@ from .models import LLMConversation
 @admin.register(LLMConversation)
 class LLMConversationAdmin(admin.ModelAdmin):
     """LLM 대화 관리자 설정"""
-    list_display = ('id', 'get_user_name', 'query_type', 'query_preview', 'created_at')
-    list_filter = ('query_type', 'created_at')
+    list_display = ('id', 'get_user_name', 'query_preview', 'created_at')
+    list_filter = ('created_at',)
     search_fields = ('query', 'response', 'user__name')
     readonly_fields = ('id', 'created_at')
     fieldsets = (
         ('기본 정보', {
-            'fields': ('id', 'user', 'query_type', 'created_at')
+            'fields': ('id', 'user', 'created_at')
         }),
         ('대화 내용', {
             'fields': ('query', 'response')
         }),
         ('메타데이터', {
-            'fields': ('metadata',),
+            'fields': ('user_info',),
             'classes': ('collapse',)
         }),
     )
