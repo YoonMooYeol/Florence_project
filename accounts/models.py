@@ -1,5 +1,5 @@
 from django.db import models
-from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 import uuid
 
 class UserManager(BaseUserManager):
@@ -20,10 +20,11 @@ class UserManager(BaseUserManager):
         """관리자 사용자 생성"""
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_active', True)
         
         return self.create_user(email, name, password, **extra_fields)
 
-class User(AbstractUser):
+class User(AbstractBaseUser, PermissionsMixin):
     """커스텀 User 모델"""
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
@@ -32,8 +33,11 @@ class User(AbstractUser):
     gender = models.CharField(max_length=10, choices=[('male', 'Male'), ('female', 'Female'), ('other', 'Other')], blank=True, null=True)
     is_pregnant = models.BooleanField(default=False)
     address = models.CharField(max_length=255, blank=True, null=True)
-    # AbstractUser에서 상속받은 필드 중 사용하지 않을 필드 비활성화
-    username = None  # username 필드 사용 안 함
+    
+    # 필수 필드
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
+    date_joined = models.DateTimeField(auto_now_add=True)
     
     # 이메일을 사용자 식별자로 사용
     USERNAME_FIELD = 'email'
@@ -42,4 +46,10 @@ class User(AbstractUser):
     objects = UserManager()
     
     def __str__(self):
+        return self.name
+        
+    def get_full_name(self):
+        return self.name
+        
+    def get_short_name(self):
         return self.name

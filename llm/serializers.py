@@ -36,31 +36,22 @@ class ResponseSerializer(serializers.Serializer):
     
     Fields:
         response (str): LLM 응답 내용
-        follow_up_questions (list): 후속 질문 제안 목록
-        query_info (dict): 질문 분석 정보
     
     Example:
         {
-            "response": "임신 중 건강한 식단은 다양한 영양소를 균형 있게 섭취하는 것이 중요합니다...",
-            "follow_up_questions": [
-                "임신 중 피해야 할 음식은 무엇인가요?",
-                "임신 중 필요한 영양제는 어떤 것이 있나요?"
-            ],
-            "query_info": {
-                "query_type": "nutrition",
-                "keywords": ["임신", "식단", "영양"]
-            }
+            "response": "임신 중 건강한 식단은 다양한 영양소를 균형 있게 섭취하는 것이 중요합니다..."
         }
     """
     response = serializers.CharField(help_text='LLM 응답 내용')
-    follow_up_questions = serializers.ListField(
-        child=serializers.CharField(),
-        help_text='후속 질문 제안'
-    )
-    query_info = serializers.JSONField(help_text='질문 분석 정보')
     
     class Meta:
-        fields = ['response', 'follow_up_questions', 'query_info']
+        fields = ['response']
+        
+    def to_representation(self, instance):
+        """직접 dict를 생성하여 성능 최적화"""
+        return {
+            'response': instance.get('response', '')
+        }
 
 class LLMConversationSerializer(serializers.ModelSerializer):
     """
@@ -71,19 +62,22 @@ class LLMConversationSerializer(serializers.ModelSerializer):
         name (str): 사용자 이름
         query (str): 사용자 질문
         response (str): LLM 응답
-        query_type (str): 질문 유형
-        metadata (dict): 대화 메타데이터
+        user_info (dict): 대화 시점의 사용자 정보
         created_at (datetime): 생성 시간
+        updated_at (datetime): 수정 시간
     """
     name = serializers.SerializerMethodField()
     
     class Meta:
         model = LLMConversation
-        fields = ['id', 'name', 'query', 'response', 'query_type', 'metadata', 'created_at']
+        fields = ['id', 'name', 'query', 'response', 'user_info', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_name(self, obj):
         """사용자 이름 반환 (사용자가 없는 경우 빈 문자열)"""
-        return obj.user.name if obj.user else ''
+        if not hasattr(obj, '_cached_name'):
+            obj._cached_name = obj.user.name if obj.user else ''
+        return obj._cached_name
 
 class LLMConversationEditSerializer(serializers.Serializer):
     """

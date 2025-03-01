@@ -28,11 +28,11 @@ urlpatterns = [
     
     # 대화 수정 API
     # PUT: 사용자 입력 수정 및 LLM 응답 업데이트
-    # 파라미터: user_id, index
+    # 파라미터: user_id, conversation_id
     re_path(r'^conversations/edit/?$', views.LLMConversationViewSet.as_view(), name='llm_conversation_edit_api'),
     
     # 대화 삭제 API
     # DELETE: 대화 삭제
-    # 파라미터: user_id, index(optional)
+    # 파라미터: user_id, conversation_id(optional)
     re_path(r'^conversations/delete/?$', views.LLMConversationViewSet.as_view(), name='llm_conversation_delete_api'),
 ] 

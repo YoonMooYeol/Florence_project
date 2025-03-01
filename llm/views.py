@@ -5,13 +5,30 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from accounts.models import User
 import logging
 import uuid
+import time
+import threading
+from django.conf import settings
+from django.db import connection
 
-from .utils import MaternalHealthLLMService
+from .utils import PyLLMService
 from .models import LLMConversation
 from .serializers import QuerySerializer, ResponseSerializer, LLMConversationSerializer, LLMConversationEditSerializer, LLMConversationDeleteSerializer
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
+
+# 싱글톤 LLM 서비스 인스턴스
+_llm_service_instance = None
+_llm_service_lock = threading.Lock()
+
+def get_llm_service():
+    """LLM 서비스 인스턴스를 반환하는 싱글톤 패턴 함수"""
+    global _llm_service_instance
+    if _llm_service_instance is None:
+        with _llm_service_lock:
+            if _llm_service_instance is None:
+                _llm_service_instance = PyLLMService()
+    return _llm_service_instance
 
 # 헬퍼 함수
 def get_user_from_uuid(user_id):
@@ -64,7 +81,7 @@ def get_conversation_by_id(user, conversation_id):
         conversation_uuid = uuid.UUID(conversation_id)
         # UUID로 대화 조회
         try:
-            conversation = LLMConversation.objects.get(id=conversation_uuid, user=user)
+            conversation = LLMConversation.objects.select_related('user').get(id=conversation_uuid, user=user)
             return conversation, None
         except LLMConversation.DoesNotExist:
             return None, f"ID가 {conversation_id}인 대화를 찾을 수 없습니다."
@@ -96,23 +113,10 @@ class MaternalHealthLLMView(APIView):
         
     Response:
         {
-            "response": "LLM 응답 내용",
-            "follow_up_questions": ["후속 질문1", "후속 질문2"],
-            "query_info": {
-                "query_type": "질문 유형",
-                "keywords": ["키워드1", "키워드2"]
-            }
+            "response": "LLM 응답 내용"
         }
     """
-    permission_classes = [IsAuthenticated]  # 인증 없이 접근 가능 (필요에 따라 변경)
-    
-    def __init__(self, **kwargs):
-        """
-        MaternalHealthLLMView 초기화
-        LLM 서비스 인스턴스를 생성합니다.
-        """
-        super().__init__(**kwargs)
-        self.llm_service = MaternalHealthLLMService()
+    permission_classes = [IsAuthenticated]  # 테스트를 위해 임시로 인증 비활성화
     
     def post(self, request, format=None):
         """
@@ -125,6 +129,9 @@ class MaternalHealthLLMView(APIView):
         Returns:
             Response: LLM 응답 또는 오류 메시지
         """
+        # 성능 측정 시작
+        start_time = time.time()
+        
         # 1. 요청 데이터 검증
         serializer = QuerySerializer(data=request.data)
         if not serializer.is_valid():
@@ -148,27 +155,26 @@ class MaternalHealthLLMView(APIView):
         user_info = self._get_or_create_user_info(user_id, preferences, pregnancy_week)
         
         try:
-            # 5. LLM 서비스 호출
-            result = self.llm_service.process_query(user_id, query_text, user_info)
+            # 5. LLM 서비스 호출 (싱글톤 패턴 사용)
+            llm_service = get_llm_service()
+            result = llm_service.process_query(user_id, query_text, user_info)
             
-            # 6. 대화 저장
-            self._save_conversation(user_id, query_text, result)
+            # 6. 비동기적으로 대화 저장 (성능 개선)
+            save_thread = threading.Thread(target=self._save_conversation, args=(user_id, query_text, result))
+            save_thread.daemon = True
+            save_thread.start()
             
-            # 7. 응답 직렬화
-            response_serializer = ResponseSerializer(data={
-                'response': result['response'],
-                'follow_up_questions': result['follow_up_questions'],
-                'query_info': result['query_info']
-            })
+            # 7. 응답 직렬화 - 최적화된 직렬화 사용
+            response_data = {
+                'response': result['response']
+            }
             
-            if response_serializer.is_valid():
-                return Response(response_serializer.validated_data, status=status.HTTP_200_OK)
-            else:
-                logger.error(f"응답 직렬화 오류: {response_serializer.errors}")
-                return Response(
-                    {"error": "응답 형식 오류", "details": response_serializer.errors},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+            # 성능 측정 종료 및 로깅
+            processing_time = time.time() - start_time
+            logger.info(f"LLM 응답 생성 시간: {processing_time:.2f}초")
+            
+            # 8. 응답 반환 - 직접 딕셔너리 반환으로 최적화
+            return Response(response_data, status=status.HTTP_200_OK)
                 
         except Exception as e:
             logger.error(f"LLM 처리 오류: {str(e)}")
@@ -189,6 +195,7 @@ class MaternalHealthLLMView(APIView):
         Returns:
             dict: 사용자 정보 딕셔너리
         """
+        # 사용자 정보 생성
         user_info = {}
         
         if user_id:
@@ -204,8 +211,6 @@ class MaternalHealthLLMView(APIView):
                     # 임신 주차 정보 추가
                     if pregnancy_week is not None:
                         user_info['pregnancy_week'] = pregnancy_week
-                    # 여기에 DB에서 임신 주차 정보를 가져오는 로직을 추가할 수 있습니다.
-                    # 예: user_info['pregnancy_week'] = user.pregnancy_profile.week
                 
                 # 사용자 선호도 정보 추가
                 user_info.update(preferences)
@@ -244,22 +249,21 @@ class MaternalHealthLLMView(APIView):
             if 'user_info' in result and 'pregnancy_week' in result['user_info']:
                 user_info['pregnancy_week'] = result['user_info']['pregnancy_week']
             
-            # 대화 저장
+            # 대화 저장 - query_type과 keywords 필드 제거
             conversation = LLMConversation.objects.create(
                 user=user,
                 query=query_text,
                 response=result['response'],
-                query_type=result['query_info']['query_type'],
-                metadata={
-                    'keywords': result['query_info']['keywords'],
-                    'follow_up_questions': result['follow_up_questions'],
-                    'user_info': user_info
-                }
+                user_info=user_info
             )
             logger.info(f"대화 저장 완료: {conversation.id}")
             
+            # 데이터베이스 연결 닫기 (스레드에서 사용 후)
+            connection.close()
+            
         except Exception as e:
             logger.error(f"대화 저장 오류: {str(e)}")
+            # 대화 저장 실패는 사용자 응답에 영향을 주지 않도록 예외를 전파하지 않음
 
 
 class LLMConversationViewSet(APIView):
@@ -278,8 +282,15 @@ class LLMConversationViewSet(APIView):
         user_id (str): 사용자 UUID
         conversation_id (str): 대화 UUID (PUT, DELETE에서 사용)
         query_type (str, optional): 질문 유형으로 필터링 (GET에서 사용)
+        
+    Authentication:
+        인증이 필요한 경우 Authorization 헤더를 다음 형식으로 제공해야 합니다:
+        Authorization: Bearer <token>
+        
+        예시:
+        Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     """
-    permission_classes = [IsAuthenticated]  # 인증 없이 접근 가능
+    permission_classes = [IsAuthenticated]  # 인증 요구사항 일시적으로 완화
     
     def get(self, request, format=None):
         """
@@ -292,6 +303,9 @@ class LLMConversationViewSet(APIView):
         Returns:
             Response: 대화 목록 또는 오류 메시지
         """
+        # 성능 측정 시작
+        start_time = time.time()
+        
         # 1. 사용자 ID 확인
         user_id = request.query_params.get('user_id')
         query_type = request.query_params.get('query_type')
@@ -316,22 +330,26 @@ class LLMConversationViewSet(APIView):
         if query_type:
             filters['query_type'] = query_type
         
-        # 5. 대화 조회
-        conversations = LLMConversation.objects.filter(**filters).order_by('-created_at')
+        # 5. 대화 조회 - select_related 사용하여 N+1 문제 해결
+        conversations = LLMConversation.objects.select_related('user').filter(**filters).order_by('-created_at')
         
         # 6. 직렬화
         serializer = LLMConversationSerializer(conversations, many=True)
+        
+        # 성능 측정 종료 및 로깅
+        processing_time = time.time() - start_time
+        logger.info(f"대화 목록 조회 시간: {processing_time:.2f}초")
         
         return Response(serializer.data, status=status.HTTP_200_OK)
     
     def put(self, request, format=None):
         """
-        사용자 입력(query) 수정 및 해당 LLM 응답 업데이트
-        수정 후 이후 대화 내용 삭제
+        대화 수정
         
         Query Parameters:
             user_id (str): 사용자 UUID
-            conversation_id (str): 수정할 대화의 ID (UUID 형식)
+            conversation_id (str): 대화 UUID
+            index (str, optional): conversation_id와 동일한 기능 (하위 호환성 유지)
             
         Request Body:
             {
@@ -339,7 +357,7 @@ class LLMConversationViewSet(APIView):
             }
             
         Returns:
-            Response: 수정된 대화 정보 또는 오류 메시지
+            Response: 수정된 대화 또는 오류 메시지
         """
         try:
             # 1. 요청 데이터 검증
@@ -371,6 +389,10 @@ class LLMConversationViewSet(APIView):
             
             # 4. 대화 ID 확인
             conversation_id = request.query_params.get('conversation_id')
+            # 하위 호환성을 위해 index 파라미터도 확인
+            if not conversation_id:
+                conversation_id = request.query_params.get('index')
+                
             if not conversation_id:
                 return Response(
                     {"error": "대화 ID가 필요합니다."},
@@ -399,34 +421,29 @@ class LLMConversationViewSet(APIView):
                 'is_pregnant': user.is_pregnant
             }
             
-            # 9. LLM 서비스 인스턴스 생성
-            llm_service = MaternalHealthLLMService()
+            # 9. LLM 서비스 인스턴스 생성 (싱글톤 패턴 사용)
+            llm_service = get_llm_service()
             
             # 10. 새로운 질문으로 LLM 응답 생성
             result = llm_service.process_query(user_id_str, new_query, user_info)
             
-            # 11. 응답 업데이트
+            # 11. 대화 업데이트
+            conversation.query = new_query
             conversation.response = result['response']
-            conversation.query_type = result['query_info']['query_type']
-            conversation.metadata = {
-                'keywords': result['query_info']['keywords'],
-                'follow_up_questions': result['follow_up_questions'],
-                'user_info': user_info
-            }
-            
-            # 12. 변경사항 저장
             conversation.save()
             
-            # 13. 이후 생성된 대화 삭제
-            LLMConversation.objects.filter(
-                user=user,
-                created_at__gt=conversation.created_at
-            ).delete()
+            # 12. 응답 직렬화
+            response_data = {
+                'id': conversation.id,
+                'user_id': user_id,
+                'query': conversation.query,
+                'response': conversation.response,
+                'user_info': conversation.user_info,
+                'created_at': conversation.created_at,
+                'updated_at': conversation.updated_at
+            }
             
-            # 14. 직렬화
-            serializer = LLMConversationSerializer(conversation)
-            
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(response_data, status=status.HTTP_200_OK)
             
         except Exception as e:
             logger.error(f"대화 수정 오류: {str(e)}")
@@ -443,6 +460,7 @@ class LLMConversationViewSet(APIView):
             user_id (str): 사용자 UUID
             conversation_id (str, optional): 삭제할 대화의 ID (UUID 형식)
                                   생략 시 모든 대화 삭제
+            index (str, optional): conversation_id와 동일한 기능 (하위 호환성 유지)
                                   
         Request Body:
             {
@@ -474,6 +492,10 @@ class LLMConversationViewSet(APIView):
             
             # 3. 대화 ID 확인 (없으면 모든 대화 삭제)
             conversation_id = request.query_params.get('conversation_id')
+            # 하위 호환성을 위해 index 파라미터도 확인
+            if not conversation_id:
+                conversation_id = request.query_params.get('index')
+                
             if conversation_id is None:
                 # 사용자의 모든 대화 삭제
                 count = LLMConversation.objects.filter(user=user).count()
@@ -508,10 +530,13 @@ class LLMConversationViewSet(APIView):
                 conversation.query = ''
                 conversation.save()
                 response_serializer = LLMConversationSerializer(conversation)
+                
                 return Response(response_serializer.data, status=status.HTTP_200_OK)
             else:
                 # 대화 완전 삭제
+                query_type = conversation.query_type
                 conversation.delete()
+                
                 return Response(
                     {"message": "대화가 삭제되었습니다."},
                     status=status.HTTP_200_OK
