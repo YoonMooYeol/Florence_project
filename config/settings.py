@@ -13,9 +13,18 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 from corsheaders.defaults import default_headers
+import os
+from dotenv import load_dotenv
+
+# 환경 변수 로드
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 환경 변수에서 OpenAI API 키 가져오기
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+LLM_MODEL = 'gpt-4o-mini'  # 또는 'gpt-4'
 
 
 # Quick-start development settings - unsuitable for production
@@ -47,7 +56,9 @@ INSTALLED_APPS = [
     
     
     #my apps
-    "rag"
+    "rag",
+    "accounts",
+    "llm",  # 새로운 LLM 전용 앱
 ]
 
 MIDDLEWARE = [
@@ -63,11 +74,10 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls" 
 
+#TODO: 배포 후 주석처리
 
-CORS_ALLOW_ALL_ORIGINS = True #TODO: 모든 주소에서 접근 가능하도록하면 코드. 배포 후 주석처리
-CORS_ALLOW_CREDENTIALS = True #TODO: jwt 인증안해도 통과 되는 코드. 배포 후 주석처리
-
-#TODO: 모든 헤더 허용. 배포 후 주석처리
+CORS_ALLOW_ALL_ORIGINS = True #TODO: 모든 도메인에서 접근 가능하도록 하는 코드. 배포 후 주석처리
+CORS_ALLOW_CREDENTIALS = True #TODO: 쿠키, 인증 토큰 같은 민감한 인증 정보를 포함한 요청을 허용.
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "content-type",
 ]
@@ -75,31 +85,32 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated', #인증 필요한 요청에 대해서 인증 필요 메시지 반환
+        'rest_framework.permissions.AllowAny',  #TODO: JWT 인증 없이 접근 가능. 배포 후 주석처리
+        # 'rest_framework.permissions.IsAuthenticated', #인증 필요한 요청에 대해서 인증 필요 메시지 반환
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication', #JWT 인증 사용
+        'rest_framework_simplejwt.authentication.JWTAuthentication', #JWT 인증 사용 활성화
     ],
 }
 
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),  # 액세스 토큰 유효 기간 1일
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # 리프레시 토큰 유효 기간 30일 
-    'ROTATE_REFRESH_TOKENS': True,  # 리프레시 토큰 회전 사용, 사용한 리프레시 토큰 블랙리스트 처리
-    'BLACKLIST_AFTER_ROTATION': True,  # 회전 후 이전 엑세스 토큰 블랙리스트 처리
-}
+# SIMPLE_JWT = {
+#     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),  # 액세스 토큰 유효 기간 1일
+#     'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # 리프레시 토큰 유효 기간 30일 
+#     'ROTATE_REFRESH_TOKENS': True,  # 리프레시 토큰 회전 사용, 사용한 리프레시 토큰 블랙리스트 처리
+#     'BLACKLIST_AFTER_ROTATION': True,  # 회전 후 이전 엑세스 토큰 블랙리스트 처리
+# }
 
 TEMPLATES = [
     {
-        "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
-        "APP_DIRS": True,
-        "OPTIONS": {
-            "context_processors": [
-                "django.template.context_processors.debug",
-                "django.template.context_processors.request",
-                "django.contrib.auth.context_processors.auth",
-                "django.contrib.messages.context_processors.messages",
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
             ],
         },
     },
@@ -141,9 +152,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "ko-kr"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Asia/Seoul"
 
 USE_I18N = True
 

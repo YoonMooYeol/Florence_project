@@ -1,7 +1,9 @@
 from django.db import models
+from accounts.models import User
 
 # Create your models here.
 class RAG(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="rag_queries", null=True, blank=True)
     question = models.TextField()
     answer = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
