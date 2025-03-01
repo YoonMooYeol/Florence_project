@@ -13,9 +13,18 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 from corsheaders.defaults import default_headers
+import os
+from dotenv import load_dotenv
+
+# 환경 변수 로드
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 환경 변수에서 OpenAI API 키 가져오기
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+LLM_MODEL = 'gpt-4o-mini'  # 또는 'gpt-4'
 
 
 # Quick-start development settings - unsuitable for production
@@ -48,8 +57,8 @@ INSTALLED_APPS = [
     
     #my apps
     "rag",
-    "sanitization",  # 산모 대상 LLM 서비스 앱
     "accounts",
+    "llm",  # 새로운 LLM 전용 앱
 ]
 
 MIDDLEWARE = [
@@ -93,15 +102,15 @@ REST_FRAMEWORK = {
 
 TEMPLATES = [
     {
-        "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
-        "APP_DIRS": True,
-        "OPTIONS": {
-            "context_processors": [
-                "django.template.context_processors.debug",
-                "django.template.context_processors.request",
-                "django.contrib.auth.context_processors.auth",
-                "django.contrib.messages.context_processors.messages",
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
             ],
         },
     },

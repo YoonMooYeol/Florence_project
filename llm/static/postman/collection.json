@@ -1,0 +1,170 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Florence LLM API",
+    "description": "Florence 프로젝트의 LLM API 테스트를 위한 Postman 컬렉션",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Maternal Health LLM API",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_id\": \"1\",\n    \"query_text\": \"임신 10주차에 어떤 증상이 나타날 수 있나요?\",\n    \"preferences\": {\n        \"language\": \"ko\"\n    }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/llm/api/maternal-health-llm/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "llm",
+            "api",
+            "maternal-health-llm",
+            ""
+          ]
+        },
+        "description": "산모 건강 관련 질문을 LLM에 전송하고 응답을 받습니다."
+      },
+      "response": []
+    },
+    {
+      "name": "Maternal Health LLM API (English)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_id\": \"1\",\n    \"query_text\": \"What symptoms can appear at 10 weeks of pregnancy?\",\n    \"preferences\": {\n        \"language\": \"en\"\n    }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/llm/api/maternal-health-llm/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "llm",
+            "api",
+            "maternal-health-llm",
+            ""
+          ]
+        },
+        "description": "Send pregnancy-related questions to the LLM in English and receive responses."
+      },
+      "response": []
+    },
+    {
+      "name": "LLM Interactions API",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/llm/api/interactions/?user_id=1",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "llm",
+            "api",
+            "interactions",
+            ""
+          ],
+          "query": [
+            {
+              "key": "user_id",
+              "value": "1"
+            }
+          ]
+        },
+        "description": "사용자의 LLM 상호작용 기록을 조회합니다."
+      },
+      "response": []
+    },
+    {
+      "name": "LLM Interactions API (Query Type Filter)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/llm/api/interactions/?user_id=1&query_type=pregnancy_week",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "llm",
+            "api",
+            "interactions",
+            ""
+          ],
+          "query": [
+            {
+              "key": "user_id",
+              "value": "1"
+            },
+            {
+              "key": "query_type",
+              "value": "pregnancy_week"
+            }
+          ]
+        },
+        "description": "특정 쿼리 타입으로 필터링된 LLM 상호작용 기록을 조회합니다."
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "your_auth_token_here",
+      "type": "string"
+    }
+  ]
+} 
