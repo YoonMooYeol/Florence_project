@@ -44,50 +44,34 @@ def get_user_from_uuid(user_id):
         logger.error(f"사용자 조회 오류: {str(e)}")
         return None, f"사용자 조회 중 오류가 발생했습니다: {str(e)}"
 
-def get_conversation_by_index_or_id(user, index_or_id):
+def get_conversation_by_id(user, conversation_id):
     """
-    인덱스 또는 UUID로 대화를 조회하는 헬퍼 함수
+    UUID로 대화를 조회하는 헬퍼 함수
     
     Args:
         user (User): 사용자 객체
-        index_or_id (str): 대화 인덱스 또는 UUID
+        conversation_id (str): 대화 UUID
         
     Returns:
         tuple: (LLMConversation 객체 또는 None, 오류 메시지 또는 None)
     """
-    # index_or_id 값 끝에 슬래시(/)가 있으면 제거
-    if index_or_id and index_or_id.endswith('/'):
-        index_or_id = index_or_id[:-1]
+    # conversation_id 값 끝에 슬래시(/)가 있으면 제거
+    if conversation_id and conversation_id.endswith('/'):
+        conversation_id = conversation_id[:-1]
         
     try:
         # UUID 형식인지 확인
-        conversation_id = uuid.UUID(index_or_id)
-        # UUID 형식이면 해당 ID로 대화 조회
+        conversation_uuid = uuid.UUID(conversation_id)
+        # UUID로 대화 조회
         try:
-            conversation = LLMConversation.objects.get(id=conversation_id, user=user)
+            conversation = LLMConversation.objects.get(id=conversation_uuid, user=user)
             return conversation, None
         except LLMConversation.DoesNotExist:
             return None, f"ID가 {conversation_id}인 대화를 찾을 수 없습니다."
     except ValueError:
-        # UUID 형식이 아니면 인덱스로 처리
-        try:
-            index = int(index_or_id)
-            if index < 0:
-                return None, "인덱스는 0 이상이어야 합니다."
-            
-            # 사용자의 대화 목록 조회 (최신순)
-            conversations = LLMConversation.objects.filter(user=user).order_by('-created_at')
-            
-            # 인덱스 범위 확인
-            if index >= conversations.count():
-                return None, f"인덱스가 범위를 벗어났습니다. 사용자의 대화는 {conversations.count()}개입니다."
-            
-            # 대화 선택
-            return conversations[index], None
-        except ValueError:
-            return None, "인덱스는 숫자여야 합니다."
-        except Exception as e:
-            return None, f"대화 조회 중 오류가 발생했습니다: {str(e)}"
+        return None, "유효하지 않은 대화 ID 형식입니다. UUID 형식이어야 합니다."
+    except Exception as e:
+        return None, f"대화 조회 중 오류가 발생했습니다: {str(e)}"
 
 class MaternalHealthLLMView(APIView):
     """
@@ -292,7 +276,7 @@ class LLMConversationViewSet(APIView):
         
     Query Parameters:
         user_id (str): 사용자 UUID
-        index (str, optional): 대화 인덱스 또는 UUID (PUT, DELETE에서 사용)
+        conversation_id (str): 대화 UUID (PUT, DELETE에서 사용)
         query_type (str, optional): 질문 유형으로 필터링 (GET에서 사용)
     """
     permission_classes = [IsAuthenticated]  # 인증 없이 접근 가능
@@ -347,7 +331,7 @@ class LLMConversationViewSet(APIView):
         
         Query Parameters:
             user_id (str): 사용자 UUID
-            index (str): 수정할 대화의 인덱스 (0부터 시작, 최신순) 또는 대화 ID (UUID 형식)
+            conversation_id (str): 수정할 대화의 ID (UUID 형식)
             
         Request Body:
             {
@@ -385,16 +369,16 @@ class LLMConversationViewSet(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # 4. 인덱스 또는 대화 ID 확인
-            index_or_id = request.query_params.get('index')
-            if not index_or_id:
+            # 4. 대화 ID 확인
+            conversation_id = request.query_params.get('conversation_id')
+            if not conversation_id:
                 return Response(
-                    {"error": "인덱스 또는 대화 ID가 필요합니다."},
+                    {"error": "대화 ID가 필요합니다."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
             # 5. 대화 조회
-            conversation, error = get_conversation_by_index_or_id(user, index_or_id)
+            conversation, error = get_conversation_by_id(user, conversation_id)
             if not conversation:
                 return Response(
                     {"error": error},
@@ -457,7 +441,7 @@ class LLMConversationViewSet(APIView):
         
         Query Parameters:
             user_id (str): 사용자 UUID
-            index (str, optional): 삭제할 대화의 인덱스 (0부터 시작, 최신순) 또는 대화 ID (UUID 형식)
+            conversation_id (str, optional): 삭제할 대화의 ID (UUID 형식)
                                   생략 시 모든 대화 삭제
                                   
         Request Body:
@@ -488,9 +472,9 @@ class LLMConversationViewSet(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # 3. 인덱스 확인 (없으면 모든 대화 삭제)
-            index_or_id = request.query_params.get('index')
-            if index_or_id is None:
+            # 3. 대화 ID 확인 (없으면 모든 대화 삭제)
+            conversation_id = request.query_params.get('conversation_id')
+            if conversation_id is None:
                 # 사용자의 모든 대화 삭제
                 count = LLMConversation.objects.filter(user=user).count()
                 LLMConversation.objects.filter(user=user).delete()
@@ -511,7 +495,7 @@ class LLMConversationViewSet(APIView):
             delete_mode = serializer.validated_data.get('delete_mode', 'all')
             
             # 5. 대화 조회
-            conversation, error = get_conversation_by_index_or_id(user, index_or_id)
+            conversation, error = get_conversation_by_id(user, conversation_id)
             if not conversation:
                 return Response(
                     {"error": error},

@@ -1,0 +1,35 @@
+{
+  "id": "florence-llm-environment",
+  "name": "Florence LLM Environment",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "default",
+      "enabled": true,
+      "description": "API 서버 URL (개발 환경: http://localhost:8000)"
+    },
+    {
+      "key": "user_id",
+      "value": "9fa5edd1-d4be-44bb-a2c7-d3da4f8717bd",
+      "type": "default",
+      "enabled": true,
+      "description": "테스트에 사용할 사용자 UUID (실제 존재하는 사용자 ID로 변경 필요)"
+    },
+    {
+      "key": "auth_token",
+      "value": "your_auth_token_here",
+      "type": "secret",
+      "enabled": true,
+      "description": "인증 토큰 (실제 발급받은 토큰으로 변경 필요)"
+    },
+    {
+      "key": "conversation_id",
+      "value": "123e4567-e89b-12d3-a456-426614174000",
+      "type": "default",
+      "enabled": true,
+      "description": "테스트에 사용할 대화 ID (실제 존재하는 대화 ID로 변경 필요)"
+    }
+  ],
+  "_postman_variable_scope": "environment"
+} 
