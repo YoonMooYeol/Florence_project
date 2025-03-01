@@ -1,0 +1,384 @@
+{
+  "info": {
+    "_postman_id": "f8a5e9c7-3b4d-4e5f-9a1d-8c6b7d8e9f0a",
+    "name": "Florence LLM API",
+    "description": "Florence 프로젝트의 LLM API 컬렉션입니다.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "계정 API",
+      "item": [
+        {
+          "name": "회원가입",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"테스트 사용자\",\n    \"email\": \"test@example.com\",\n    \"password_hash\": \"test1234\",\n    \"phone_number\": \"010-1234-5678\",\n    \"gender\": \"female\",\n    \"is_pregnant\": true,\n    \"address\": \"서울시 강남구\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url_accounts}}/register/",
+              "host": [
+                "{{base_url_accounts}}"
+              ],
+              "path": [
+                "register",
+                ""
+              ]
+            },
+            "description": "새로운 사용자를 등록합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "로그인",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"test1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url_accounts}}/login/",
+              "host": [
+                "{{base_url_accounts}}"
+              ],
+              "path": [
+                "login",
+                ""
+              ]
+            },
+            "description": "사용자 로그인 및 JWT 토큰 발급"
+          },
+          "response": []
+        },
+        {
+          "name": "토큰 갱신",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"refresh\": \"{{refresh_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url_accounts}}/token/refresh/",
+              "host": [
+                "{{base_url_accounts}}"
+              ],
+              "path": [
+                "token",
+                "refresh",
+                ""
+              ]
+            },
+            "description": "리프레시 토큰을 사용하여 새로운 액세스 토큰을 발급받습니다."
+          },
+          "response": []
+        }
+      ],
+      "description": "사용자 계정 관련 API"
+    },
+    {
+      "name": "LLM API",
+      "item": [
+        {
+          "name": "1. LLM 질문하기",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"user_id\": \"{{user_id}}\",\n    \"query_text\": \"임신 초기에 주의해야 할 음식은 무엇인가요?\",\n    \"preferences\": {\n        \"response_length\": \"medium\",\n        \"detail_level\": \"high\"\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            },
+            "description": "LLM에 질문을 전송하고 응답을 받습니다."
+          },
+          "response": []
+        },
+        {
+          "name": "2. 대화 목록 조회하기",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/conversations?user_id={{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                },
+                {
+                  "key": "query_type",
+                  "value": "general",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "사용자의 대화 기록을 조회합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "3. 대화 수정하기",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"query\": \"임신 초기에 먹으면 좋은 음식은 무엇인가요?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/conversations/edit?user_id={{user_id}}&index=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "conversations",
+                "edit"
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                },
+                {
+                  "key": "index",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "기존 대화 내용을 수정합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "4. 대화 삭제하기",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"delete_mode\": \"all\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/conversations/delete?user_id={{user_id}}&index=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "conversations",
+                "delete"
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                },
+                {
+                  "key": "index",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "대화 기록을 삭제합니다."
+          },
+          "response": []
+        },
+        {
+          "name": "5. 모든 대화 삭제하기",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"delete_mode\": \"all\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/conversations/delete?user_id={{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "conversations",
+                "delete"
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                }
+              ]
+            },
+            "description": "사용자의 모든 대화 기록을 삭제합니다."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000/v1/llm",
+      "type": "string"
+    },
+    {
+      "key": "base_url_accounts",
+      "value": "http://localhost:8000/api/accounts",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "여기에 사용자 ID를 입력하세요",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "여기에 액세스 토큰을 입력하세요",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "여기에 리프레시 토큰을 입력하세요",
+      "type": "string"
+    }
+  ]
+} 
