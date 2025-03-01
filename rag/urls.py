@@ -7,7 +7,7 @@ from django.urls import include
 
 # 라우터 설정
 router = DefaultRouter()
-router.register(r'history', RAGViewSet, basename='rag-history')
+router.register(r'rag', RAGViewSet, basename='rag')
 
 urlpatterns = [
     path('', include(router.urls)),

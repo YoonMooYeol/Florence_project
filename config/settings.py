@@ -26,12 +26,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 LLM_MODEL = 'gpt-4o-mini'  # 또는 'gpt-4'
 
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-a#t7masi_a%yx-_7t6%@c3e47qej_wzqpmgzngt+&frr_6aey_"
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -72,9 +72,8 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "config.urls" 
+ROOT_URLCONF = "config.urls"
 
-#TODO: 배포 후 주석처리
 
 CORS_ALLOW_ALL_ORIGINS = True #TODO: 모든 도메인에서 접근 가능하도록 하는 코드. 배포 후 주석처리
 CORS_ALLOW_CREDENTIALS = True #TODO: 쿠키, 인증 토큰 같은 민감한 인증 정보를 포함한 요청을 허용.
@@ -86,19 +85,24 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',  #TODO: JWT 인증 없이 접근 가능. 배포 후 주석처리
-        # 'rest_framework.permissions.IsAuthenticated', #인증 필요한 요청에 대해서 인증 필요 메시지 반환
+        'rest_framework.permissions.IsAuthenticated', #인증 필요한 요청에 대해서 인증 필요 메시지 반환
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication', #JWT 인증 사용 활성화
+        'rest_framework_simplejwt.authentication.JWTAuthentication', # 기본 JWT 인증 사용
     ],
 }
 
-# SIMPLE_JWT = {
-#     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),  # 액세스 토큰 유효 기간 1일
-#     'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # 리프레시 토큰 유효 기간 30일 
-#     'ROTATE_REFRESH_TOKENS': True,  # 리프레시 토큰 회전 사용, 사용한 리프레시 토큰 블랙리스트 처리
-#     'BLACKLIST_AFTER_ROTATION': True,  # 회전 후 이전 엑세스 토큰 블랙리스트 처리
-# }
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),  # 액세스 토큰 유효 기간 1일
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # 리프레시 토큰 유효 기간 30일 
+    'ROTATE_REFRESH_TOKENS': True,  # 리프레시 토큰 회전 사용, 사용한 리프레시 토큰 블랙리스트 처리
+    'BLACKLIST_AFTER_ROTATION': True,  # 회전 후 이전 엑세스 토큰 블랙리스트 처리
+    'USER_ID_FIELD': 'user_id',  # 커스텀 User 모델의 ID 필드 이름
+    'USER_ID_CLAIM': 'user_id',  # 토큰에 저장될 사용자 ID 클레임 이름
+}
+
+# 커스텀 User 모델 설정
+AUTH_USER_MODEL = 'accounts.User'
 
 TEMPLATES = [
     {
@@ -124,8 +128,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "florence_db",
+        "USER": os.getenv("DB_USER", ""),  # 환경 변수에서 가져오거나 기본값 사용
+        "PASSWORD": os.getenv("DB_PASSWORD", ""),  # 환경 변수에서 가져오거나 기본값 사용
+        "HOST": os.getenv("DB_HOST", "localhost"),
+        "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
 
@@ -169,4 +177,4 @@ STATIC_URL = "static/"
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
