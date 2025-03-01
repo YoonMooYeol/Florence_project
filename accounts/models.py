@@ -32,7 +32,6 @@ class User(AbstractUser):
     gender = models.CharField(max_length=10, choices=[('male', 'Male'), ('female', 'Female'), ('other', 'Other')], blank=True, null=True)
     is_pregnant = models.BooleanField(default=False)
     address = models.CharField(max_length=255, blank=True, null=True)
-    
     # AbstractUser에서 상속받은 필드 중 사용하지 않을 필드 비활성화
     username = None  # username 필드 사용 안 함
     
