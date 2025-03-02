@@ -100,7 +100,10 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/day',
         'user': '1000/day'
-    }
+    },
+    # 한글 오류 메시지를 위한 예외 처리기 설정
+    'EXCEPTION_HANDLER': 'config.exception_handler.custom_exception_handler',
+    'NON_FIELD_ERRORS_KEY': 'error',
 }
 
 SIMPLE_JWT = {

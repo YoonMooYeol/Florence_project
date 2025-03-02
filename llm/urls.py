@@ -1,4 +1,5 @@
-from django.urls import path, re_path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from . import views
 
 """
@@ -16,23 +17,14 @@ URL 패턴:
 
 app_name = 'llm'
 
+# 라우터 설정
+router = DefaultRouter()
+router.register(r'conversations', views.LLMConversationViewSet, basename='conversation')
+
 urlpatterns = [
-    # 산모 건강 관련 LLM API
-    # POST: 사용자 질문 처리 및 응답 생성
-    path('', views.MaternalHealthLLMView.as_view(), name='llm_api'),
+    # LLM 질문 API
+    path('', views.LLMQueryView.as_view(), name='llm_query'),
     
-    # 대화 조회 API
-    # GET: 사용자의 대화 기록 조회
-    # 파라미터: user_id, query_type(optional)
-    re_path(r'^conversations/?$', views.LLMConversationViewSet.as_view(), name='llm_conversations_api'),
-    
-    # 대화 수정 API
-    # PUT: 사용자 입력 수정 및 LLM 응답 업데이트
-    # 파라미터: user_id, conversation_id
-    re_path(r'^conversations/edit/?$', views.LLMConversationViewSet.as_view(), name='llm_conversation_edit_api'),
-    
-    # 대화 삭제 API
-    # DELETE: 대화 삭제
-    # 파라미터: user_id, conversation_id(optional)
-    re_path(r'^conversations/delete/?$', views.LLMConversationViewSet.as_view(), name='llm_conversation_delete_api'),
+    # 뷰셋 라우터 포함
+    path('', include(router.urls)),
 ] 
