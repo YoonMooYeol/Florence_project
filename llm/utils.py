@@ -1,16 +1,17 @@
 import logging
 import time
 import json
-import threading
 from functools import lru_cache
 from django.conf import settings
 import openai
+import os
+from dotenv import load_dotenv
+
+# .env 파일 로드
+load_dotenv()
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
-
-# OpenAI API 키 설정
-openai.api_key = getattr(settings, 'OPENAI_API_KEY', None)
 
 # 시스템 프롬프트 캐싱
 @lru_cache(maxsize=1)
@@ -31,36 +32,23 @@ class PyLLMService:
         model (str): 사용할 LLM 모델 (기본값: gpt-4)
     """
     
-    # 클래스 변수로 클라이언트 인스턴스 공유
-    _client_instance = None
-    _client_lock = threading.Lock()
-    
     def __init__(self, api_key=None):
         """
         PyLLMService 초기화
         
         Args:
-            api_key (str, optional): OpenAI API 키 (없으면 settings에서 가져옴)
+            api_key (str, optional): OpenAI API 키 (없으면 .env에서 가져옴)
         """
-        self.api_key = api_key or getattr(settings, 'OPENAI_API_KEY', None)
+        # .env 파일에서 API 키 가져오기
+        self.api_key = api_key or os.getenv('OPENAI_API_KEY')
         if not self.api_key:
-            raise ValueError("OpenAI API 키가 설정되지 않았습니다.")
+            raise ValueError("OpenAI API 키가 설정되지 않았습니다. .env 파일에 OPENAI_API_KEY를 설정해주세요.")
             
-        self.model = getattr(settings, 'LLM_MODEL', 'gpt-4')
+        # .env 파일에서 모델 설정 가져오기
+        self.model = os.getenv('LLM_MODEL', 'gpt-4')
         
-        # OpenAI API 키 설정
-        openai.api_key = self.api_key
-        
-        # OpenAI 클라이언트 초기화 (싱글톤 패턴)
-        self._get_client()
-    
-    def _get_client(self):
-        """OpenAI 클라이언트 인스턴스 반환 (싱글톤 패턴)"""
-        if PyLLMService._client_instance is None:
-            with PyLLMService._client_lock:
-                if PyLLMService._client_instance is None:
-                    PyLLMService._client_instance = openai.OpenAI(api_key=self.api_key)
-        return PyLLMService._client_instance
+        # OpenAI 클라이언트 초기화
+        self.client = openai.OpenAI(api_key=self.api_key)
     
     def process_query(self, user_id, query_text, user_info=None):
         """
@@ -150,7 +138,7 @@ JSON 형식으로만 응답해주세요. 다른 텍스트는 포함하지 마세
     
     def _call_llm(self, prompt, temperature=0.3, max_tokens=2000):
         """
-        LLM API 호출 - 재사용 가능한 클라이언트 활용
+        LLM API 호출
         
         Args:
             prompt (str): LLM에게 전달할 프롬프트
@@ -165,11 +153,8 @@ JSON 형식으로만 응답해주세요. 다른 텍스트는 포함하지 마세
         """
         logger.info(f"LLM API 호출: {prompt[:50]}...")
         
-        # 클라이언트 가져오기
-        client = self._get_client()
-        
-        # OpenAI API 호출 - 재사용 가능한 클라이언트 사용
-        response = client.chat.completions.create(
+        # OpenAI API 호출
+        response = self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": get_system_prompt()},
