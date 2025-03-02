@@ -1,23 +1,44 @@
 from rest_framework import serializers
 from .models import User
+from django.contrib.auth.password_validation import validate_password
 
 class UserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, validators=[validate_password])
+    password_confirm = serializers.CharField(write_only=True)
+    
     class Meta:
         model = User
-        fields = ['user_id', 'name', 'email', 'phone_number', 'password', 'gender', 'is_pregnant', 'address']
-        extra_kwargs = {'password': {'write_only': True}}
-
+        fields = ['user_id', 'username', 'name', 'email', 'phone_number', 'password', 'password_confirm', 'gender', 'is_pregnant', 'address']
+        read_only_fields = ['user_id']
+    
+    def validate(self, data):
+        # 비밀번호 확인 검증
+        if data.get('password') != data.get('password_confirm'):
+            raise serializers.ValidationError({"password": "비밀번호가 일치하지 않습니다."})
+        return data
+    
     def create(self, validated_data):
-        # User 모델의 set_password 메서드를 사용하여 비밀번호 해시화
-        user = User(
-            name=validated_data['name'],
+        # password_confirm 필드 제거
+        validated_data.pop('password_confirm', None)
+        
+        # User 생성
+        user = User.objects.create_user(
+            username=validated_data['username'],
             email=validated_data['email'],
-            phone_number=validated_data.get('phone_number'),
-            gender=validated_data.get('gender'),
-            is_pregnant=validated_data.get('is_pregnant', False),
-            address=validated_data.get('address')
+            name=validated_data['name'],
+            password=validated_data['password']
         )
-        user.set_password(validated_data['password'])
+        
+        # 추가 필드 설정
+        if 'phone_number' in validated_data:
+            user.phone_number = validated_data['phone_number']
+        if 'gender' in validated_data:
+            user.gender = validated_data['gender']
+        if 'is_pregnant' in validated_data:
+            user.is_pregnant = validated_data['is_pregnant']
+        if 'address' in validated_data:
+            user.address = validated_data['address']
+        
         user.save()
         return user
 
