@@ -54,30 +54,12 @@ class QuerySerializer(serializers.Serializer):
             logger.warning("사용자 ID가 비어 있습니다.")
             raise serializers.ValidationError("사용자 ID는 필수입니다.")
         
-        # 공백 제거 및 소문자로 변환
-        original_value = value
-        value = value.strip().lower()
-        if original_value != value:
-            logger.debug(f"정규화 후 값 변경: '{original_value}' -> '{value}'")
-        
-        # 끝에 슬래시가 있으면 제거
+        # 슬래시 제거 (API 엔드포인트에서 종종 발생)
         if value.endswith('/'):
-            original_value = value
-            value = value[:-1]
-            logger.debug(f"슬래시 제거 후: '{original_value}' -> '{value}'")
-        
-        # 하이픈이 없는 경우 추가 (32자리 문자열인 경우)
-        if len(value) == 32 and '-' not in value:
-            try:
-                original_value = value
-                value = f"{value[0:8]}-{value[8:12]}-{value[12:16]}-{value[16:20]}-{value[20:32]}"
-                logger.debug(f"하이픈 추가 후: '{original_value}' -> '{value}'")
-            except IndexError as e:
-                logger.warning(f"하이픈 추가 중 오류: {str(e)}, 값: '{value}'")
-                pass
+            value = value.rstrip('/')
         
         try:
-            # UUID 형식인지 확인
+            # UUID 형식인지 확인 - PostgreSQL은 UUID 타입을 네이티브로 지원
             uuid_obj = uuid.UUID(value)
             normalized_uuid = str(uuid_obj)
             logger.debug(f"UUID 변환 성공: '{value}' -> '{normalized_uuid}'")
