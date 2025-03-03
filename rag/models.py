@@ -1,24 +1,22 @@
 from django.db import models
-from accounts.models import User
+import uuid
 
-# Create your models here.
-class RAG(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="rag_queries", null=True, blank=True)
-    question = models.TextField()
-    answer = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
+class EmbeddingFile(models.Model):
+    """
+    임베딩 처리된 파일 정보 모델
+    
+    이 모델은 임베딩 처리된 파일의 정보를 저장합니다.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    file_name = models.CharField(max_length=255, help_text="파일 이름")
+    file_path = models.CharField(max_length=1000, help_text="파일 경로")
+    created_at = models.DateTimeField(auto_now_add=True, help_text="생성일")
+    updated_at = models.DateTimeField(auto_now=True, help_text="수정일")
+    
     def __str__(self):
-        return self.question
-
-# 임베딩된 데이터 저장 테이블
-class RAG_DB(models.Model):
-    file_name = models.CharField(max_length=200)
-    file_path = models.CharField(max_length=200)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return self.file_name
+        return f"{self.file_name} ({self.created_at.strftime('%Y-%m-%d')})"
+    
+    class Meta:
+        verbose_name = "임베딩 파일"
+        verbose_name_plural = "임베딩 파일"
     
