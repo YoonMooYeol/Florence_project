@@ -1,16 +1,13 @@
-from django.urls import path
-from .views import (
-    RAGQueryView, RAGAutoEmbedView, RAGViewSet
-)
+from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from django.urls import include
+from . import views
 
 # 라우터 설정
 router = DefaultRouter()
-router.register(r'history', RAGViewSet, basename='rag-history')
+router.register(r'files', views.EmbeddingFileViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('query/', RAGQueryView.as_view(), name='rag-query'),
-    path('auto-embed/', RAGAutoEmbedView.as_view(), name='rag-auto-embed'),
+    path('auto-embed/', views.RAGAutoEmbedView.as_view(), name='auto-embed'),
+    path('manual-embed/', views.RAGManualEmbedView.as_view(), name='manual-embed'),
 ]
