@@ -28,3 +28,23 @@ class User(AbstractUser):
     
     def __str__(self):
         return self.name
+
+class Pregnancy(models.Model):
+    """임신 정보 모델"""
+    pregnancy_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pregnancies')
+    husband_id = models.UUIDField(null=True, blank=True)
+    baby_name = models.CharField(max_length=100, null=True, blank=True, verbose_name='태명')
+    due_date = models.DateField(null=True, blank=True, verbose_name='출산 예정일')
+    current_week = models.IntegerField(null=True, blank=True, verbose_name='현재 임신 주차')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    high_risk = models.BooleanField(default=False, verbose_name='고위험 임신 여부')
+
+    class Meta:
+        verbose_name = '임신 정보'
+        verbose_name_plural = '임신 정보'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.name}님의 임신 정보"

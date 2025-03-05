@@ -143,7 +143,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "florence_db",
+        "NAME": os.getenv('DB_NAME'),
         "USER": os.getenv("DB_USER", ""),  # 환경 변수에서 가져오거나 기본값 사용
         "PASSWORD": os.getenv("DB_PASSWORD", ""),  # 환경 변수에서 가져오거나 기본값 사용
         "HOST": os.getenv("DB_HOST", "localhost"),

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User
+from .models import User, Pregnancy
 from django.contrib.auth.password_validation import validate_password
 
 class UserSerializer(serializers.ModelSerializer):
@@ -45,3 +45,22 @@ class UserSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+
+class PregnancySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Pregnancy
+        fields = ['pregnancy_id', 'husband_id', 'baby_name', 'due_date', 
+                 'current_week', 'created_at', 'updated_at', 'high_risk']
+        read_only_fields = ['pregnancy_id', 'created_at', 'updated_at']
+
+    def validate_current_week(self, value):
+        if value is not None and (value < 1 or value > 42):
+            raise serializers.ValidationError("임신 주차는 1주차에서 42주차 사이여야 합니다.")
+        return value
+
+    def validate_due_date(self, value):
+        if value is not None:
+            from datetime import date
+            if value < date.today():
+                raise serializers.ValidationError("출산 예정일은 오늘 이후여야 합니다.")
+        return value
