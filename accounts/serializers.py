@@ -64,3 +64,26 @@ class PregnancySerializer(serializers.ModelSerializer):
             if value < date.today():
                 raise serializers.ValidationError("출산 예정일은 오늘 이후여야 합니다.")
         return value
+    
+class UserUpdateSerializer(serializers.ModelSerializer):
+    """사용자 정보 수정용 시리얼라이저"""
+    class Meta:
+        model = User
+        fields = ('username', 'name', 'email', 'phone_number', 'gender', 'address', 'is_pregnant')  # 실제 모델에 있는 필드들만 포함
+        read_only_fields = ('user_id',)  # 수정 불가능한 필드. user_id는 자동으로 생성되므로 수정 불가능
+        # username도 수정 불가능하게 할지 고려해야 함***
+        
+    def validate_email(self, value):
+        # 이메일 변경 시 중복 검사
+        user = self.context['request'].user
+        if User.objects.exclude(pk=user.pk).filter(email=value).exists():
+            raise serializers.ValidationError("이미 사용 중인 이메일입니다.")
+        return value
+
+    # username 수정 불가능하게 변경시 삭제해야 함***
+    def validate_username(self, value):
+        # username 변경 시 중복 검사
+        user = self.context['request'].user
+        if User.objects.exclude(pk=user.pk).filter(username=value).exists():
+            raise serializers.ValidationError("이미 사용 중인 사용자 이름입니다.")
+        return value
