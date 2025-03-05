@@ -76,12 +76,18 @@ class EmbeddingService:
                 file_result['status'] = 'success'
                 file_result['documents_embedded'] = 1  # 단순화를 위해 1로 설정
                 
+            elif file_ext == '.txt':
+                # 3. SimpleRAG로 TXT 파일 처리
+                SimpleRAG.process_file(file_path)  # txt 파일 처리 로직 추가
+                file_result['status'] = 'success'
+                file_result['documents_embedded'] = 1  # 단순화를 위해 1로 설정
+                
             else:
-                # 3. 지원하지 않는 파일 형식 처리
+                # 4. 지원하지 않는 파일 형식 처리
                 file_result['status'] = 'skipped'
                 file_result['message'] = f"지원하지 않는 파일 형식: {file_ext}"
             
-            # 4. 처리 성공 시 DB에 기록
+            # 5. 처리 성공 시 DB에 기록
             if file_result['status'] == 'success':
                 EmbeddingFile.objects.create(
                     file_name=os.path.basename(file_path), 
@@ -89,7 +95,7 @@ class EmbeddingService:
                 )
             
         except Exception as e:
-            # 5. 오류 처리
+            # 6. 오류 처리
             file_result['status'] = 'failed'
             file_result['error'] = str(e)
         
@@ -114,7 +120,7 @@ class EmbeddingService:
         """
         # 1. 기본값 설정
         if file_types is None:
-            file_types = ['csv']  # CSV 파일만 지원
+            file_types = ['csv', 'txt']  # CSV와 TXT 파일 모두 지원
         
         # 2. 결과 변수 초기화
         results = {
