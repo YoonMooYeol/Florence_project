@@ -5,9 +5,14 @@ from rest_framework.views import APIView
 from .models import User
 from .serializers import UserSerializer, LoginSerializer
 from django.contrib.auth import authenticate
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 import logging
+
+
+
+
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -65,13 +70,29 @@ class LoginView(APIView):
                 'error': '이메일 또는 비밀번호가 올바르지 않습니다.'
             }, status=status.HTTP_401_UNAUTHORIZED)
 
+
 class TokenRefreshView(JWTTokenRefreshView):
-    """토큰 갱신 API
-    
-    리프레시 토큰을 사용하여 새로운 액세스 토큰을 발급받습니다.
-    요청 본문에 refresh 필드에 리프레시 토큰을 포함해야 합니다.
-    """
-    pass
+    """ 토큰 갱신 API """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.data.get("refresh")
+        if not refresh_token:
+            return Response({"error": "refresh 토큰이 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = TokenRefreshSerializer(data={"refresh": refresh_token})
+        serializer.is_valid(raise_exception=True)
+
+        return Response(
+            {
+                "access": serializer.validated_data["access"]
+            },
+            status=status.HTTP_200_OK
+        )
+
+
 
 # class FindUsernameView(generics.GenericAPIView):
 #     """아이디 찾기 API"""
