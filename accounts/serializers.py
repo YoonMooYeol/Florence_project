@@ -64,3 +64,12 @@ class PregnancySerializer(serializers.ModelSerializer):
             if value < date.today():
                 raise serializers.ValidationError("출산 예정일은 오늘 이후여야 합니다.")
         return value
+
+class FindUsernameSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        """ 이메일이 DB에 존재하는지 검증 """
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("해당 이메일로 등록된 계정이 없습니다.")
+        return value
