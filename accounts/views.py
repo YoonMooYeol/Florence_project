@@ -1,12 +1,13 @@
-from rest_framework import generics, status
+from rest_framework import generics, status, viewsets, permissions
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
-from .models import User
-from .serializers import UserSerializer, LoginSerializer
+from .models import User, Pregnancy
+from .serializers import UserSerializer, LoginSerializer, PregnancySerializer
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
+from rest_framework.decorators import action
 import logging
 
 # 로깅 설정
@@ -111,3 +112,25 @@ class TokenRefreshView(JWTTokenRefreshView):
 # class FollowView(generics.GenericAPIView):
 #     """팔로잉/팔로워 기능 API"""
 #     # 팔로잉/팔로워 로직 구현
+
+class PregnancyViewSet(viewsets.ModelViewSet):
+    serializer_class = PregnancySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Pregnancy.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    # @action(detail=False, methods=['get'])
+    # def current_pregnancy(self, request):
+    #     """현재 진행 중인 임신 정보를 가져옵니다."""
+    #     pregnancy = self.get_queryset().first()
+    #     if pregnancy:
+    #         serializer = self.get_serializer(pregnancy)
+    #         return Response(serializer.data)
+    #     return Response(
+    #         {"message": "등록된 임신 정보가 없습니다."},
+    #         status=status.HTTP_404_NOT_FOUND
+    #     )
