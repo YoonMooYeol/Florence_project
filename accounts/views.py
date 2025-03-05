@@ -3,16 +3,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from .models import User, Pregnancy
-from .serializers import UserSerializer, LoginSerializer, PregnancySerializer
+from .serializers import UserSerializer, LoginSerializer, PregnancySerializer, FindUsernameSerializer
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 from rest_framework.decorators import action
 import logging
-
-
-
 
 
 # 로깅 설정
@@ -94,10 +91,22 @@ class TokenRefreshView(JWTTokenRefreshView):
         )
 
 
+class FindUsernameView(generics.GenericAPIView):
+    permission_classes = [AllowAny]  # 인증 없이 접근 가능하게 설정
+    serializer_class = FindUsernameSerializer
 
-# class FindUsernameView(generics.GenericAPIView):
-#     """아이디 찾기 API"""
-#     # 아이디 찾기 로직 구현
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data["email"]
+            try:
+                user = User.objects.get(email=email)
+                return Response({"username": user.username}, status=status.HTTP_200_OK)
+            except User.DoesNotExist:
+                return Response({"email": ["해당 이메일로 등록된 계정이 없습니다."]}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 # class ResetPasswordView(generics.GenericAPIView):
 #     """비밀번호 찾기 API"""
