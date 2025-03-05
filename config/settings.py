@@ -58,7 +58,8 @@ INSTALLED_APPS = [
     #my apps
     "rag",
     "accounts",
-    "llm",  # 새로운 LLM 전용 앱
+    "llm",
+    "healthcare",
 ]
 
 MIDDLEWARE = [
@@ -84,7 +85,7 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',  #TODO: JWT 인증 없이 접근 가능. 배포 후 주석처리
+        # 'rest_framework.permissions.AllowAny',  #TODO: JWT 인증 없이 접근 가능. 배포 후 주석처리
         'rest_framework.permissions.IsAuthenticated', #인증 필요한 요청에 대해서 인증 필요 메시지 반환
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -142,10 +143,10 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv('DB_NAME'),
-        "USER": os.getenv("DB_USER", ""),  # 환경 변수에서 가져오거나 기본값 사용
-        "PASSWORD": os.getenv("DB_PASSWORD", ""),  # 환경 변수에서 가져오거나 기본값 사용
+        "ENGINE": os.getenv("DB_ENGINE", ""),
+        "NAME": os.getenv("DB_NAME", ""),
+        "USER": os.getenv("DB_USER", ""),
+        "PASSWORD": os.getenv("DB_PASSWORD", ""),
         "HOST": os.getenv("DB_HOST", "localhost"),
         "PORT": os.getenv("DB_PORT", "5432"),
     }
