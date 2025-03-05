@@ -3,6 +3,9 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
+# RAG 서비스 임포트
+from .rag_service import rag_service
+
 # .env 파일 로드
 load_dotenv()
 
@@ -30,6 +33,29 @@ def process_llm_query(user_id, query_text, user_info=None):
         logger.error("OpenAI API 키가 설정되지 않았습니다.")
         return {"response": "서비스 구성 오류가 발생했습니다. 관리자에게 문의하세요."}
     
+    # RAG 서비스 사용 설정
+    use_rag = os.getenv('USE_RAG', 'true').lower() == 'true'
+    
+    # RAG 서비스를 통한 응답 시도
+    if use_rag:
+        try:
+            rag_response = rag_service.query(query_text, user_info)
+            
+            # RAG 응답이 성공적으로 생성된 경우
+            if rag_response['using_rag']:
+                logger.info("RAG를 사용하여 질의응답을 처리했습니다.")
+                return {
+                    "response": rag_response['response'],
+                    "source_documents": rag_response['source_documents'],
+                    "using_rag": True
+                }
+            else:
+                logger.warning("RAG 서비스를 사용할 수 없어 일반 LLM으로 대체합니다.")
+        except Exception as e:
+            logger.error(f"RAG 질의응답 중 오류 발생: {str(e)}")
+            logger.exception("상세 오류 내용:")
+    
+    # RAG 서비스를 사용할 수 없거나 실패한 경우 기존 OpenAI API 사용
     model = os.getenv('LLM_MODEL', 'gpt-4')
     
     # 사용자 컨텍스트 생성
@@ -58,7 +84,11 @@ def process_llm_query(user_id, query_text, user_info=None):
         )
         
         response_text = response.choices[0].message.content.strip()
-        return {"response": response_text}
+        return {
+            "response": response_text,
+            "source_documents": [],
+            "using_rag": False
+        }
     
     except Exception as e:
         logger.error(f"LLM API 호출 중 오류 발생: {str(e)}")
