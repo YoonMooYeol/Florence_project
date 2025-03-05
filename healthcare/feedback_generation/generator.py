@@ -58,6 +58,26 @@ class FeedbackGenerator:
             except Exception as e:
                 print(f"의료 정보 수집 중 오류 발생: {e}")
                 medical_info = self._get_default_medical_info()
+                
+        # 권장사항을 일반 텍스트로 변환
+        recommendations = basic_feedback.get("recommendations", ["맞춤형 권장사항을 생성할 수 없습니다."])
+        text_recommendations = []
+        
+        for rec in recommendations:
+            # 마크다운 형식 제거
+            clean_rec = rec
+            # 마크다운 링크 변환 [텍스트](URL) -> 텍스트
+            clean_rec = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean_rec)
+            # 마크다운 강조 제거
+            clean_rec = re.sub(r'\*\*([^*]+)\*\*', r'\1', clean_rec)
+            clean_rec = re.sub(r'__([^_]+)__', r'\1', clean_rec)
+            clean_rec = re.sub(r'\*([^*]+)\*', r'\1', clean_rec)
+            clean_rec = re.sub(r'_([^_]+)_', r'\1', clean_rec)
+            # 불필요한 기호 제거
+            clean_rec = clean_rec.lstrip('-*•·').strip()
+            
+            if clean_rec:
+                text_recommendations.append(clean_rec)
 
         # 3. 결합된 피드백 반환
         return {
@@ -69,9 +89,7 @@ class FeedbackGenerator:
             "mood_analysis": basic_feedback.get(
                 "mood_analysis", "감정 상태 정보를 분석할 수 없습니다."
             ),
-            "recommendations": basic_feedback.get(
-                "recommendations", ["맞춤형 권장사항을 생성할 수 없습니다."]
-            ),
+            "recommendations": text_recommendations,
             "precautions": basic_feedback.get("precautions", []),
             "medical_tips": medical_info.get("tips", []),
             "sources": medical_info.get("sources", []),
@@ -89,19 +107,24 @@ class FeedbackGenerator:
             interaction_text += f"감정: {interaction['emotion']}\n\n"
 
         system_prompt = """
-        당신은 산모의 컨디션을 분석하고 개인화된 피드백을 제공하는 전문가입니다.
+        당신은 산모의 컨디션을 분석하고 개인화된 피드백을 제공하는 전문 산부인과 의사입니다.
+        산모의 대화 전체 맥락을 깊이 이해하고, 산모의 신체적, 정신적 상태를 세심하게 배려하는 따뜻하고 공감적인 피드백을 생성해야 합니다.
+        
         제공된 대화 데이터를 분석하여 다음을 포함한 종합적인 피드백을 생성하세요:
         
-        1. 전반적인 컨디션 요약
-        2. 감정 상태 분석
-        3. 맞춤형 권장사항 (3-5개)
-        4. 주의해야 할 사항 (필요한 경우)
+        1. 전반적인 컨디션 요약 - 산모의 상태를 이전 대화 맥락까지 고려하여 포괄적으로 평가
+        2. 감정 상태 분석 - 산모의 감정 변화를 면밀히 파악하고 그 원인과 해결책 제시
+        3. 맞춤형 권장사항 (3-5개) - 이전에 언급된 내용을 기억하고 반복 없이 새로운 가치 있는 정보 제공
+        4. 주의해야 할 사항 (필요한 경우) - 우려되는 징후가 있을 경우 친절하게 조언
         
-        응답은 항상 공감적이고 지지적이어야 합니다.
-        심각한 건강 문제가 의심되는 경우 의료 전문가 상담을 권장하세요.
+        산모가 여러 차례의 대화를 했다면, 이전 대화에서 언급된 내용을 기억하고 연속성을 유지하는 것이 중요합니다.
+        매번 같은 조언을 반복하지 말고, 산모의 상황 변화에 맞춘 새로운 통찰력을 제공하세요.
+        
+        응답은 항상 공감적이고 지지적이며 산모를 존중하는 어조로 작성되어야 합니다.
+        심각한 건강 문제가 의심되는 경우에만 의료 전문가 상담을 권장하세요.
         """
 
-        user_prompt = f"다음은 산모와의 대화 내용입니다:\n\n{interaction_text}\n\n이 데이터를 바탕으로 종합적인 피드백을 제공해주세요."
+        user_prompt = f"다음은 산모와의 대화 내용입니다:\n\n{interaction_text}\n\n이 데이터를 바탕으로 산모의 현재 상태와 필요에 맞는 종합적이고 맞춤형 피드백을 제공해주세요. 이전 대화 내용을 기억하고 대화의 연속성을 유지하면서 새로운 가치 있는 정보를 제공해 주세요."
 
         try:
             completion = self.client.chat.completions.create(
@@ -427,9 +450,15 @@ def generate_feedback(conversation_id):
                 session=conversation,
                 summary=feedback_data.get('summary', ''),
                 emotional_analysis=feedback_data.get('mood_analysis', ''),
-                health_tips=feedback_data.get('recommendations', []),
-                medical_info=feedback_data.get('medical_tips', [])
+                health_tips='\n'.join([f"• {rec}" for rec in feedback_data.get('recommendations', [])]),
+                medical_info={}
             )
+            
+            # 의료 정보 저장
+            medical_tips = feedback_data.get('medical_tips', [])
+            feedback.set_tips(medical_tips)
+            feedback.set_sources(feedback_data.get('sources', []))
+            feedback.save()
             
         print(f"피드백 생성 완료: {conversation_id}")
         return feedback

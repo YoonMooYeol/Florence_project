@@ -89,6 +89,12 @@ class ConversationDetailView(APIView):
         
         # 메시지 형식 변환
         formatted_messages = []
+        
+        # 대화 컨텍스트 및 감정 추적을 위한 변수
+        emotion_counts = {}
+        last_emotion = 'neutral'
+        conversation_topics = set()
+        
         for msg in messages:
             # 질문 메시지 (봇)
             if msg.question:
@@ -111,6 +117,27 @@ class ConversationDetailView(APIView):
                     'emotion': msg.emotion,
                     'step': msg.step
                 })
+                
+                # 감정 상태 추적
+                if msg.emotion:
+                    if msg.emotion not in emotion_counts:
+                        emotion_counts[msg.emotion] = 0
+                    emotion_counts[msg.emotion] += 1
+                    last_emotion = msg.emotion
+                    
+                # 간단한 토픽 추출 (키워드 기반)
+                keywords = ['기분', '식단', '운동', '수면', '통증', '스트레스', '병원']
+                for keyword in keywords:
+                    if keyword in msg.answer:
+                        conversation_topics.add(keyword)
+        
+        # 대화 시작부터 경과 시간 계산 (분 단위)
+        elapsed_time = None
+        if conversation.created_at:
+            from django.utils import timezone
+            now = timezone.now()
+            time_diff = now - conversation.created_at
+            elapsed_time = int(time_diff.total_seconds() / 60)  # 분 단위로 변환
         
         # 대화 정보 구성
         response_data = {
@@ -118,7 +145,14 @@ class ConversationDetailView(APIView):
             'created_at': conversation.created_at,
             'is_completed': conversation.is_completed,
             'messages': formatted_messages,
-            'has_feedback': hasattr(conversation, 'feedback')
+            'has_feedback': hasattr(conversation, 'feedback'),
+            'context': {
+                'elapsed_time_minutes': elapsed_time,
+                'dominant_emotion': max(emotion_counts.items(), key=lambda x: x[1])[0] if emotion_counts else 'neutral',
+                'current_emotion': last_emotion,
+                'topics_discussed': list(conversation_topics),
+                'total_exchanges': len(messages)
+            }
         }
         
         # 피드백 정보 추가 (있는 경우)
@@ -178,7 +212,7 @@ class HealthcareView(APIView):
 
         # 모듈 초기화
         emotion_analyzer = EmotionAnalyzer(client=client)
-        dialogue_manager = DialogueManager()
+        dialogue_manager = DialogueManager(client=client)
         data_collector = DataCollector()
         feedback_generator = FeedbackGenerator(client=client)
         medical_crawler = MedicalCrawler(client=client)
@@ -309,8 +343,8 @@ class HealthcareView(APIView):
         db_feedback = Feedback.objects.create(
             session=conversation_session,
             summary=feedback.get('summary', ''),
-            emotional_analysis=feedback.get('emotional_analysis', ''),
-            health_tips=feedback.get('recommendations', '')
+            emotional_analysis=feedback.get('mood_analysis', ''),
+            health_tips='\n'.join([f"• {rec}" for rec in feedback.get('recommendations', [])])
         )
         
         # 의료 정보 저장
@@ -344,8 +378,11 @@ class NextQuestionView(APIView):
             answered_messages = messages.exclude(answer="")
             current_step = answered_messages.count()  # 답변이 있는 메시지 수로 계산
             
-            # 대화 관리자 초기화
-            dialogue_manager = DialogueManager()
+            # OpenAI 클라이언트 초기화
+            client = OpenAI()
+            
+            # 대화 관리자 초기화 - OpenAI 클라이언트 전달
+            dialogue_manager = DialogueManager(client=client)
             dialogue_manager.current_step = current_step
             
             # 현재 감정 상태 분석 (이전 메시지 기반)
@@ -436,8 +473,11 @@ class AnswerView(APIView):
             # 대화 단계 계산
             current_step = conversation.messages.count()
             
-            # 대화 관리자 초기화
-            dialogue_manager = DialogueManager()
+            # OpenAI 클라이언트 초기화
+            client = OpenAI()
+            
+            # 대화 관리자 초기화 - OpenAI 클라이언트 전달
+            dialogue_manager = DialogueManager(client=client)
             dialogue_manager.current_step = current_step
             
             # 대화 완료 여부 확인

@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 from openai import OpenAI
 from firecrawl import FirecrawlApp  # 최신 Firecrawl SDK 추가
+import re
 
 
 class MedicalCrawler:
@@ -98,40 +99,109 @@ class MedicalCrawler:
                     print(f"URL 스크랩 중: {url}")
 
                     # 검색된 URL 스크랩하기
-                    scrape_result = self.firecrawl_app.scrape_url(
-                        url,
-                        params={
-                            "timeout": timeout,  # 밀리초 단위 타임아웃
-                            "formats": ["markdown"],
-                        },
-                    )
+                    try:
+                        scrape_result = self.firecrawl_app.scrape_url(
+                            url,
+                            params={
+                                "timeout": timeout,  # 밀리초 단위 타임아웃
+                                "formats": ["markdown", "html"],  # Firecrawl에서 지원하는 기본 포맷
+                            },
+                        )
+                    except Exception as e:
+                        print(f"첫 번째 스크랩 시도 실패: {str(e)}")
+                        try:
+                            # 다른 포맷 조합 시도
+                            scrape_result = self.firecrawl_app.scrape_url(
+                                url,
+                                params={
+                                    "timeout": timeout,
+                                    "formats": ["html"],  # html만 시도
+                                },
+                            )
+                        except Exception as e2:
+                            print(f"두 번째 스크랩 시도도 실패: {str(e2)}")
+                            continue  # 다음 URL로 진행
 
-                    # 스크랩 결과 처리
-                    markdown_content = None
-
+                    # 디버그용 출력: 스크랩 결과 구조 확인
+                    print(f"scrape_result 타입: {type(scrape_result)}")
                     if isinstance(scrape_result, dict):
-                        if "markdown" in scrape_result:
-                            markdown_content = scrape_result["markdown"]
-                        elif (
-                            "data" in scrape_result
-                            and isinstance(scrape_result["data"], dict)
-                            and "markdown" in scrape_result["data"]
-                        ):
-                            markdown_content = scrape_result["data"]["markdown"]
-                    elif hasattr(scrape_result, "markdown"):
-                        markdown_content = scrape_result.markdown
+                        print(f"scrape_result 키: {list(scrape_result.keys())}")
+                        if "data" in scrape_result and isinstance(scrape_result["data"], dict):
+                            print(f"scrape_result['data'] 키: {list(scrape_result['data'].keys())}")
+                    
+                    # 스크랩 결과 처리
+                    content = None
 
-                    if not markdown_content:
-                        continue
+                    # 여러 가능한 형식 중 사용 가능한 것 찾기
+                    for format_type in ["markdown", "html"]:
+                        # 딕셔너리인 경우
+                        if isinstance(scrape_result, dict):
+                            # 직접 키로 있는 경우
+                            if format_type in scrape_result:
+                                content = scrape_result[format_type]
+                                print(f"포맷 '{format_type}' 찾음")
+                                break
+                            # data 딕셔너리 안에 있는 경우
+                            elif (
+                                "data" in scrape_result
+                                and isinstance(scrape_result["data"], dict)
+                                and format_type in scrape_result["data"]
+                            ):
+                                content = scrape_result["data"][format_type]
+                                print(f"data.{format_type} 찾음")
+                                break
+                            # content 딕셔너리 안에 있는 경우
+                            elif (
+                                "content" in scrape_result
+                                and isinstance(scrape_result["content"], dict)
+                                and format_type in scrape_result["content"]
+                            ):
+                                content = scrape_result["content"][format_type]
+                                print(f"content.{format_type} 찾음")
+                                break
+                        # 객체인 경우
+                        elif hasattr(scrape_result, format_type):
+                            content = getattr(scrape_result, format_type)
+                            print(f"객체.{format_type} 찾음")
+                            break
+                    
+                    # 내용을 찾을 수 없는 경우 metadata 확인
+                    if not content and isinstance(scrape_result, dict):
+                        # metadata에서 정보 추출 시도
+                        if "metadata" in scrape_result:
+                            metadata = scrape_result["metadata"]
+                            if isinstance(metadata, dict):
+                                parts = []
+                                if "title" in metadata and metadata["title"]:
+                                    parts.append(f"# {metadata['title']}")
+                                if "description" in metadata and metadata["description"]:
+                                    parts.append(metadata["description"])
+                                content = "\n\n".join(parts)
+                                print("metadata에서 정보 추출")
+
+                    # 형식에 상관없이 내용이 없는 경우
+                    if not content:
+                        if isinstance(scrape_result, dict):
+                            # 텍스트 또는 내용을 가진 키가 있는지 확인
+                            for key in ["text", "content", "body", "main"]:
+                                if key in scrape_result and scrape_result[key]:
+                                    content = scrape_result[key]
+                                    break
+                        
+                        # 그래도 내용이 없으면 스킵
+                        if not content:
+                            print(f"URL {url}에서 사용 가능한 내용을 찾을 수 없습니다.")
+                            continue
 
                     results.append(
                         {
                             "title": title,
                             "url": url,
-                            "content": markdown_content[:10000],  # 길이 제한
+                            "content": content[:10000] if content else "",  # 길이 제한
                         }
                     )
                 except Exception as e:
+                    print(f"URL {url} 크롤링 중 오류: {str(e)}")
                     continue
 
             return results
@@ -248,10 +318,8 @@ class MedicalCrawler:
             처리된 의료 정보
         """
         if not results:
-            return {
-                "tips": ["검색 결과가 없습니다. 다른 질문을 시도해보세요."],
-                "sources": [],
-            }
+            print("크롤링 결과가 없거나 불충분함, 기본 의료 정보 사용")
+            return self._get_default_medical_tips()
 
         # 모든 결과의 내용을 결합
         combined_content = ""
@@ -387,9 +455,15 @@ class MedicalCrawler:
                     self._is_similar_tip(tip, existing) for existing in unique_tips
                 ):
                     unique_tips.append(tip)
+                    
+            # 마크다운을 일반 텍스트로 변환
+            plain_text_tips = self._convert_markdown_to_text(unique_tips[:7])  # 최대 7개 팁으로 제한
 
+            # 성공 메시지 로깅
+            print(f"의료 정보 크롤링 성공: {len(plain_text_tips)}개의 팁 수집됨")
+            
             return {
-                "tips": unique_tips[:7],  # 최대 7개 팁으로 제한
+                "tips": plain_text_tips,  # 일반 텍스트로 변환된 팁
                 "sources": sources[:5],  # 최대 5개 소스로 제한
             }
 
@@ -415,3 +489,64 @@ class MedicalCrawler:
         similarity = len(common_words) / min(len(words1), len(words2))
 
         return similarity > 0.5
+
+    def _convert_markdown_to_text(self, tips: List[str]) -> List[str]:
+        """마크다운 형식의 팁을 일반 텍스트로 변환"""
+        text_tips = []
+        
+        for tip in tips:
+            # 마크다운 강조 표시 중 ** 패턴 처리 (가장 먼저 처리)
+            tip = re.sub(r'\*\*([^*]+)\*\*', r'\1', tip)
+            
+            # ** 표시가 남아있는 경우 추가 처리
+            while '**' in tip:
+                tip = tip.replace('**', '', 1)
+            
+            # 마크다운 링크 변환 [텍스트](URL) -> 텍스트
+            tip = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', tip)
+            
+            # 다른 마크다운 강조 처리
+            tip = re.sub(r'__([^_]+)__', r'\1', tip)
+            tip = re.sub(r'\*([^*]+)\*', r'\1', tip)
+            tip = re.sub(r'_([^_]+)_', r'\1', tip)
+            
+            # 남아있는 개별 강조 기호 제거
+            for char in ['*', '_', '`', '~']:
+                tip = tip.replace(char, '')
+            
+            # 마크다운 헤더 제거 (#으로 시작하는 텍스트)
+            tip = re.sub(r'^#+\s+', '', tip)
+            
+            # 불릿 포인트 통일 (-, *, • 등을 통일된 형식으로)
+            tip = re.sub(r'^-\s+', '• ', tip)
+            tip = re.sub(r'^\*\s+', '• ', tip)
+            
+            # 번호 목록 처리 (1., 2. 등을 제거)
+            tip = re.sub(r'^\d+\.\s+', '', tip)
+            
+            # 불필요한 마크다운 기호 제거
+            tip = tip.replace('\\', '')
+            tip = tip.replace('>', '')
+            
+            # 과도한 공백 제거
+            tip = re.sub(r'\s+', ' ', tip).strip()
+            
+            if tip:
+                text_tips.append(tip)
+                
+        return text_tips
+
+    def _get_default_medical_tips(self) -> Dict[str, Any]:
+        """크롤링 실패 시 기본 의료 정보 제공"""
+        default_tips = [
+            "규칙적인 산전 검진을 받으세요. 정기적인 검진은 임신 중 발생할 수 있는 문제를 조기에 발견하고 관리하는 데 중요합니다.",
+            "균형 잡힌 영양 섭취를 유지하세요. 임신 중에는 엽산, 철분, 칼슘이 특히 중요하며, 다양한 과일, 채소, 단백질을 포함한 식단을 유지하는 것이 좋습니다.",
+            "적절한 운동을 꾸준히 하세요. 걷기, 수영, 산전 요가와 같은 가벼운 운동은 체중 관리와 기분 개선에 도움이 됩니다.",
+            "충분한 수분을 섭취하세요. 하루에 8-10잔의 물을 마시는 것이 좋으며, 이는 임신 중 부종 예방에도 도움이 됩니다."
+        ]
+        
+        print(f"크롤링 된 의료 정보: {len(default_tips)}개의 팁")
+        return {
+            "tips": default_tips,
+            "sources": ["임신과 출산 건강 가이드 (기본 정보)"]
+        }
