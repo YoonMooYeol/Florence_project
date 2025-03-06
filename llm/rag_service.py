@@ -9,6 +9,7 @@ from langchain_chroma import Chroma
 from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
 from django.conf import settings
+from accounts.models import Pregnancy  # Pregnancy 모델 임포트
 
 from rag.method import SimpleRAG
 
@@ -26,7 +27,7 @@ class RAGService:
     def __init__(self):
         """RAG 서비스 초기화"""
         self.db_dir = SimpleRAG.DB_DIR
-        self.llm_model = os.getenv('LLM_MODEL', 'gpt-4')
+        self.llm_model = os.getenv('LLM_MODEL', 'gpt-4o')
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
         self.chain = None
         self.vectorstore = None
@@ -63,7 +64,7 @@ class RAGService:
             다음은 사용자와의 이전 대화 내용입니다:
             {chat_history}
 
-            사용자 질문: {question}
+            사용자 정보와 질문: {question}
             """)
             
             # 대화 메모리 설정
@@ -93,13 +94,16 @@ class RAGService:
             logger.error(f"RAG 서비스 초기화 중 오류 발생: {str(e)}")
             return False
     
-    def query(self, query_text: str, user_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def query(self, query_text: str, user_info: Optional[Dict[str, Any]] = None, 
+              user_id: Optional[str] = None, chat_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
         """
         RAG 기반 질의응답 수행
         
         Args:
             query_text: 사용자 질문
             user_info: 사용자 정보 (선택)
+            user_id: 사용자 ID (선택)
+            chat_history: 이전 대화 기록 (선택)
             
         Returns:
             dict: 응답 및 참조 문서
@@ -114,6 +118,22 @@ class RAGService:
                     "using_rag": False
                 }
         
+        # 외부에서 제공된 대화 기록이 있으면, 메모리를 초기화
+        if chat_history and len(chat_history) > 0:
+            # 기존 메모리 초기화
+            if hasattr(self.chain, 'memory') and self.chain.memory:
+                # 대화 기록을 LangChain 형식으로 변환
+                langchain_history = []
+                for i in range(0, len(chat_history), 2):
+                    if i + 1 < len(chat_history):  # 짝이 맞는지 확인
+                        user_msg = chat_history[i]['content']
+                        ai_msg = chat_history[i+1]['content']
+                        langchain_history.append({"input": user_msg, "output": ai_msg})
+                
+                # 메모리 초기화
+                for hist in langchain_history:
+                    self.chain.memory.save_context({"question": hist["input"]}, {"answer": hist["output"]})
+        
         # 사용자 컨텍스트 추가
         enhanced_query = query_text
         if user_info:
@@ -122,8 +142,20 @@ class RAGService:
                 context.append(f"사용자 이름: {user_info['name']}")
             if user_info.get('is_pregnant'):
                 context.append("사용자는 임신 중입니다.")
+            
+            # pregnancy_week가 이미 user_info에 있는지 확인하고, 없으면 DB에서 조회
             if user_info.get('pregnancy_week'):
                 context.append(f"임신 {user_info['pregnancy_week']}주차입니다.")
+            elif user_id:
+                try:
+                    # 사용자 ID로 임신 정보 조회
+                    pregnancy_info = Pregnancy.objects.filter(user_id=user_id).first()
+                    if pregnancy_info and pregnancy_info.current_week:
+                        context.append(f"임신 {pregnancy_info.current_week}주차입니다.")
+                        # user_info에도 추가
+                        user_info['pregnancy_week'] = pregnancy_info.current_week
+                except Exception as e:
+                    logger.warning(f"임신 정보 조회 중 오류 발생: {str(e)}")
             
             if context:
                 context_str = "\n".join(context)

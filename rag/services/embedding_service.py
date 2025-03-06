@@ -82,6 +82,12 @@ class EmbeddingService:
                 file_result['status'] = 'success'
                 file_result['documents_embedded'] = 1  # 단순화를 위해 1로 설정
                 
+            elif file_ext == '.json' or file_ext == '.jsonl':
+                # JSON 또는 JSONL 파일 처리
+                SimpleRAG.process_file(file_path)
+                file_result['status'] = 'success'
+                file_result['documents_embedded'] = 1  # 단순화를 위해 1로 설정
+                
             else:
                 # 4. 지원하지 않는 파일 형식 처리
                 file_result['status'] = 'skipped'
@@ -120,7 +126,7 @@ class EmbeddingService:
         """
         # 1. 기본값 설정
         if file_types is None:
-            file_types = ['csv', 'txt']  # CSV와 TXT 파일 모두 지원
+            file_types = ['csv', 'txt', 'json', 'jsonl']  # CSV, TXT, JSON, JSONL 파일 지원
         
         # 2. 결과 변수 초기화
         results = {
