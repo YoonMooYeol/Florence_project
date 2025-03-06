@@ -14,6 +14,12 @@ URL 패턴:
     /v1/llm/conversations/edit/ - 대화 수정 API (PUT)
     /v1/llm/conversations/delete/ - 대화 삭제 API (DELETE)
     /v1/llm/pregnancy-search/ - 임신 주차 검색 API (POST)
+    
+    # 채팅방 관련 URL
+    /v1/llm/chat/rooms/ - 채팅방 목록 조회 (GET) 및 생성 (POST)
+    /v1/llm/chat/rooms/<chat_id>/ - 채팅방 상세 정보 조회 (GET)
+    /v1/llm/chat/rooms/<chat_id>/messages/ - 채팅방에 메시지 생성 (POST)
+    /v1/llm/chat/rooms/<chat_id>/summarize/ - 채팅방 요약 (POST)
 """
 
 app_name = 'llm'
@@ -28,6 +34,12 @@ urlpatterns = [
     
     # 임신 주차 검색 API
     path('pregnancy-search/', views.pregnancy_search, name='pregnancy_search'),
+    
+    # 채팅방 관련 API
+    path('chat/rooms/', views.ChatRoomListCreateView.as_view(), name='chat_rooms'),
+    path('chat/rooms/<uuid:chat_id>/', views.ChatRoomDetailView.as_view(), name='chat_room_detail'),
+    path('chat/rooms/<uuid:chat_id>/messages/', views.ChatMessageCreateView.as_view(), name='chat_message_create'),
+    path('chat/rooms/<uuid:chat_id>/summarize/', views.ChatRoomSummarizeView.as_view(), name='chat_room_summarize'),
     
     # 뷰셋 라우터 포함
     path('', include(router.urls)),
