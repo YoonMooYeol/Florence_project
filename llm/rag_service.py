@@ -242,7 +242,7 @@ class RAGService:
         # 프롬프트 구성
         prompt = f"""
         You are a friendly companion providing medically accurate information about pregnancy and childbirth.  
-        Always respond warmly. Answer questions within 80~100 characters accurately.  
+        Always respond warmly. Answer questions within 20~300 characters accurately.  
         If the topic is unrelated to pregnancy, please ask a question related to pregnancy. and Respond strictly in Korean.  
 
         Here is the pregnancy week information:  
