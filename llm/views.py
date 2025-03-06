@@ -11,8 +11,8 @@ from .utils import process_llm_query
 from .models import LLMConversation
 from .serializers import QuerySerializer, LLMConversationSerializer, LLMConversationEditSerializer, LLMConversationDeleteSerializer
 from accounts.models import Pregnancy  # Pregnancy 모델 임포트
-from langchain.document_loaders import JSONLoader  # 예시, 실제 사용하는 loader로 변경
-from langchain.retrievers import TFIDFRetriever  # 예시
+from langchain_community.document_loaders import JSONLoader  # 예시, 실제 사용하는 loader로 변경
+from langchain_community.retrievers import TFIDFRetriever  # 예시
 from langchain.chains import RetrievalQA
 
 # User 모델 가져오기
