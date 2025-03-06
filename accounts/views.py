@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from .models import User, Pregnancy
-from .serializers import UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer
+from .serializers import UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -102,9 +102,35 @@ class TokenRefreshView(JWTTokenRefreshView):
 #     """비밀번호 찾기 API"""
 #     # 비밀번호 찾기 로직 구현
 
-# class ChangePasswordView(generics.UpdateAPIView):
-#     """비밀번호 수정 API"""
-#     # 비밀번호 수정 로직 구현
+class ChangePasswordView(generics.UpdateAPIView):
+    """비밀번호 수정 API"""
+    serializer_class = ChangePasswordSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_object(self):
+        return self.request.user
+    
+    def put(self, request, *args, **kwargs):  # post 대신 put 사용
+        user = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        
+        if serializer.is_valid():
+            # 현재 비밀번호 확인
+            if not user.check_password(serializer.validated_data['current_password']):
+                return Response(
+                    {"current_password": "현재 비밀번호가 올바르지 않습니다."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 새 비밀번호로 변경
+            user.set_password(serializer.validated_data['new_password'])
+            user.save()
+            
+            return Response({
+                "message": "비밀번호가 성공적으로 변경되었습니다."
+            }, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ListUsersView(generics.ListAPIView):

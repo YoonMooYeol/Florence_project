@@ -87,3 +87,20 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         if User.objects.exclude(pk=user.pk).filter(username=value).exists():
             raise serializers.ValidationError("이미 사용 중인 사용자 이름입니다.")
         return value
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """비밀번호 변경 시리얼라이저"""
+    current_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True, validators=[validate_password])
+    new_password_confirm = serializers.CharField(required=True)
+
+    def validate(self, data):
+        # 새 비밀번호 일치 여부 확인
+        if data.get('new_password') != data.get('new_password_confirm'):
+            raise serializers.ValidationError({"new_password": "새 비밀번호가 일치하지 않습니다."})
+        
+        # 현재 비밀번호와 새 비밀번호가 같은지 확인
+        if data.get('current_password') == data.get('new_password'):
+            raise serializers.ValidationError({"new_password": "현재 비밀번호와 새 비밀번호가 같습니다."})
+        
+        return data
