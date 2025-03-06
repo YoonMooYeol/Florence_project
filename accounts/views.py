@@ -91,20 +91,20 @@ class TokenRefreshView(JWTTokenRefreshView):
         )
 
 
-class FindUsernameView(generics.GenericAPIView):
-    permission_classes = [AllowAny]  # 인증 없이 접근 가능하게 설정
-    serializer_class = FindUsernameSerializer
-
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            email = serializer.validated_data["email"]
-            try:
-                user = User.objects.get(email=email)
-                return Response({"username": user.username}, status=status.HTTP_200_OK)
-            except User.DoesNotExist:
-                return Response({"email": ("해당 이메일로 등록된 계정이 없습니다.")}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+# class FindUsernameView(generics.GenericAPIView):
+#     permission_classes = [AllowAny]  # 인증 없이 접근 가능하게 설정
+#     serializer_class = FindUsernameSerializer
+#
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         if serializer.is_valid():
+#             email = serializer.validated_data["email"]
+#             try:
+#                 user = User.objects.get(email=email)
+#                 return Response({"username": user.username}, status=status.HTTP_200_OK)
+#             except User.DoesNotExist:
+#                 return Response({"email": ("해당 이메일로 등록된 계정이 없습니다.")}, status=status.HTTP_400_BAD_REQUEST)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 
