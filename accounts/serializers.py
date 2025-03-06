@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import User, Pregnancy
 from django.contrib.auth.password_validation import validate_password
+from django.db.utils import IntegrityError
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
@@ -70,23 +71,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('username', 'name', 'email', 'phone_number', 'gender', 'address', 'is_pregnant')  # 실제 모델에 있는 필드들만 포함
-        read_only_fields = ('user_id',)  # 수정 불가능한 필드. user_id는 자동으로 생성되므로 수정 불가능
-        # username도 수정 불가능하게 할지 고려해야 함***
-        
-    def validate_email(self, value):
-        # 이메일 변경 시 중복 검사
-        user = self.context['request'].user
-        if User.objects.exclude(pk=user.pk).filter(email=value).exists():
-            raise serializers.ValidationError("이미 사용 중인 이메일입니다.")
-        return value
-
-    # username 수정 불가능하게 변경시 삭제해야 함***
-    def validate_username(self, value):
-        # username 변경 시 중복 검사
-        user = self.context['request'].user
-        if User.objects.exclude(pk=user.pk).filter(username=value).exists():
-            raise serializers.ValidationError("이미 사용 중인 사용자 이름입니다.")
-        return value
+        read_only_fields = ('user_id', 'email')  # 수정 불가능한 필드. user_id는 자동으로 생성되므로 수정 불가능
 
 class ChangePasswordSerializer(serializers.Serializer):
     """비밀번호 변경 시리얼라이저"""
