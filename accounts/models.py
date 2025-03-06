@@ -28,11 +28,12 @@ class User(AbstractUser):
     phone_number = models.CharField(
         max_length=15, 
         unique=True,
+        null=True,
+        blank=True,
         verbose_name='전화번호',
         error_messages={
             'unique': "이미 등록된 전화번호입니다.",
             'max_length': "전화번호는 15자를 초과할 수 없습니다.",
-            'blank': "전화번호를 입력해주세요.",
             'invalid': "올바른 전화번호 형식이 아닙니다.",
         }
     )
