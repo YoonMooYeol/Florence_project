@@ -23,6 +23,15 @@ class LLMConversation(models.Model):
         blank=True, 
         verbose_name='사용자 정보'
     )
+    source_documents = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name='참조 문서'
+    )
+    using_rag = models.BooleanField(
+        default=False,
+        verbose_name='RAG 사용 여부'
+    )
     created_at = models.DateTimeField(
         auto_now_add=True, 
         verbose_name='생성 시간'

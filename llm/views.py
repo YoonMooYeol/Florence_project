@@ -4,12 +4,16 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
-from django.http import Http404
+from django.http import Http404, JsonResponse
 import logging
 
 from .utils import process_llm_query
 from .models import LLMConversation
 from .serializers import QuerySerializer, LLMConversationSerializer, LLMConversationEditSerializer, LLMConversationDeleteSerializer
+from accounts.models import Pregnancy  # Pregnancy 모델 임포트
+from langchain.document_loaders import JSONLoader  # 예시, 실제 사용하는 loader로 변경
+from langchain.retrievers import TFIDFRetriever  # 예시
+from langchain.chains import RetrievalQA
 
 # User 모델 가져오기
 User = get_user_model()
@@ -68,15 +72,25 @@ class LLMQueryView(generics.GenericAPIView):
             'name': user.name,
             'is_pregnant': user.is_pregnant,
         }
-        if pregnancy_week is not None:
+        
+        # 임신 정보 가져오기
+        pregnancy_info = Pregnancy.objects.filter(user=user).first()
+        if pregnancy_info and pregnancy_info.current_week:
+            user_info['pregnancy_week'] = pregnancy_info.current_week
+        # 요청에서 전달된 pregnancy_week가 있으면 이를 우선 사용
+        elif pregnancy_week is not None:
             user_info['pregnancy_week'] = pregnancy_week
         
+        # 이전 대화 기록은 사용하지 않음
+        chat_history = []
+        
         try:
-            # LLM 서비스 호출
+            # LLM 서비스 호출 (이전 대화 기록 없이)
             result = process_llm_query(
                 user_id=str(user.user_id),
                 query_text=query_text,
-                user_info=user_info
+                user_info=user_info,
+                chat_history=chat_history
             )
             
             # 대화 저장
@@ -266,3 +280,29 @@ class LLMConversationViewSet(viewsets.ModelViewSet):
         else:
             conversation.delete()
             return Response({"message": "대화가 삭제되었습니다."})
+
+def get_filtered_response(request):
+    query = request.GET.get('query', '')
+    
+    # JSONLoader를 통해 문서를 불러옵니다.
+    loader = JSONLoader(file_path='path/to/WeeklyPregnancyInformation.json')
+    documents = loader.load()
+    
+    # 임의의 TF-IDF 기반 리트리버 (또는 다른 리트리버)를 사용해 문서를 검색합니다.
+    retriever = TFIDFRetriever.from_documents(documents)
+    
+    # 12주차와 관련된 문서만 선택하도록 검색 쿼리 수정 (예: "임신 12주차")
+    filtered_query = f"임신 {query}" if query.isdigit() else query
+    
+    results = retriever.get_relevant_documents(filtered_query)
+    
+    # 이후 요약 체인 또는 응답 체인을 활용해 결과를 정제합니다.
+    qa_chain = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever)
+    answer = qa_chain.run(filtered_query)
+    
+    return JsonResponse({
+        'query': query,
+        'filtered_query': filtered_query,
+        'answer': answer,
+        'documents': [doc.metadata for doc in results]
+    })
