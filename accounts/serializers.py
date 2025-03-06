@@ -64,12 +64,27 @@ class PregnancySerializer(serializers.ModelSerializer):
             if value < date.today():
                 raise serializers.ValidationError("출산 예정일은 오늘 이후여야 합니다.")
         return value
+    
+class UserUpdateSerializer(serializers.ModelSerializer):
+    """사용자 정보 수정용 시리얼라이저"""
+    class Meta:
+        model = User
+        fields = ('username', 'name', 'email', 'phone_number', 'gender', 'address', 'is_pregnant')  # 실제 모델에 있는 필드들만 포함
+        read_only_fields = ('user_id', 'email')  # 수정 불가능한 필드. user_id는 자동으로 생성되므로 수정 불가능
 
-class FindUsernameSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+class ChangePasswordSerializer(serializers.Serializer):
+    """비밀번호 변경 시리얼라이저"""
+    current_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True, validators=[validate_password])
+    new_password_confirm = serializers.CharField(required=True)
 
-    def validate_email(self, value):
-        """ 이메일이 DB에 존재하는지 검증 """
-        if not User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("해당 이메일로 등록된 계정이 없습니다.")
-        return value
+    def validate(self, data):
+        # 새 비밀번호 일치 여부 확인
+        if data.get('new_password') != data.get('new_password_confirm'):
+            raise serializers.ValidationError({"new_password": "새 비밀번호가 일치하지 않습니다."})
+        
+        # 현재 비밀번호와 새 비밀번호가 같은지 확인
+        if data.get('current_password') == data.get('new_password'):
+            raise serializers.ValidationError({"new_password": "현재 비밀번호와 새 비밀번호가 같습니다."})
+        
+        return data

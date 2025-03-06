@@ -3,14 +3,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from .models import User, Pregnancy
-from .serializers import UserSerializer, LoginSerializer, PregnancySerializer, FindUsernameSerializer
+from .serializers import UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 from rest_framework.decorators import action
 import logging
-
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -112,32 +111,75 @@ class TokenRefreshView(JWTTokenRefreshView):
 #     """비밀번호 찾기 API"""
 #     # 비밀번호 찾기 로직 구현
 
-# class ChangePasswordView(generics.UpdateAPIView):
-#     """비밀번호 수정 API"""
-#     # 비밀번호 수정 로직 구현
+class ChangePasswordView(generics.UpdateAPIView):
+    """비밀번호 수정 API"""
+    serializer_class = ChangePasswordSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_object(self):
+        return self.request.user
+    
+    def put(self, request, *args, **kwargs):  # post 대신 put 사용
+        user = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        
+        if serializer.is_valid():
+            # 현재 비밀번호 확인
+            if not user.check_password(serializer.validated_data['current_password']):
+                return Response(
+                    {"current_password": "현재 비밀번호가 올바르지 않습니다."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 새 비밀번호로 변경
+            user.set_password(serializer.validated_data['new_password'])
+            user.save()
+            
+            return Response({
+                "message": "비밀번호가 성공적으로 변경되었습니다."
+            }, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# class InputMotherInfoView(generics.CreateAPIView):
-#     """산모 정보 입력 API"""
-#     # 산모 정보 입력 로직 구현
 
-# class UpdateMotherInfoView(generics.UpdateAPIView):
-#     """산모 정보 수정 API"""
-#     # 산모 정보 수정 로직 구현
+class ListUsersView(generics.ListAPIView):
+    """전체 사용자 조회 API"""
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
 
-# class ListUsersView(generics.ListAPIView):
-#     """전체 사용자 조회 API"""
-#     queryset = User.objects.all()
-#     serializer_class = UserSerializer
+class UserDetailView(generics.RetrieveAPIView):
+    """단일 사용자 정보 조회 API"""
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'user_id'  # UUID 필드를 사용하여 조회
 
-# class UserDetailView(generics.RetrieveAPIView):
-#     """단일 사용자 정보 조회 API"""
-#     queryset = User.objects.all()
-#     serializer_class = UserSerializer
+class UpdateUserInfoView(generics.RetrieveUpdateAPIView):
+    """사용자 정보 조회/변경 API"""
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_object(self):
+        # 현재 로그인한 사용자의 정보만 수정 가능
+        return self.request.user
+    
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return UserUpdateSerializer  # 수정용 시리얼라이저 (비밀번호 필드 제외)
+        return UserSerializer  # 조회용 시리얼라이저
+    
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
 
-# class UpdateUserInfoView(generics.UpdateAPIView):
-#     """사용자 정보 변경 API"""
-#     queryset = User.objects.all()
-#     serializer_class = UserSerializer
+        return Response({
+            'message': '사용자 정보가 성공적으로 수정되었습니다.',
+            'data': serializer.data
+        })
 
 # class FollowView(generics.GenericAPIView):
 #     """팔로잉/팔로워 기능 API"""
