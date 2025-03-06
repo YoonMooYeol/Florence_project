@@ -1,6 +1,6 @@
 from rest_framework.response import Response
 from rest_framework import status, viewsets, generics
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
@@ -14,6 +14,7 @@ from accounts.models import Pregnancy  # Pregnancy 모델 임포트
 from langchain_community.document_loaders import JSONLoader  # 예시, 실제 사용하는 loader로 변경
 from langchain_community.retrievers import TFIDFRetriever  # 예시
 from langchain.chains import RetrievalQA
+from .rag_service import rag_service, query_by_pregnancy_week, RAGService  # RAG 서비스 직접 임포트
 
 # User 모델 가져오기
 User = get_user_model()
@@ -280,6 +281,72 @@ class LLMConversationViewSet(viewsets.ModelViewSet):
         else:
             conversation.delete()
             return Response({"message": "대화가 삭제되었습니다."})
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def pregnancy_search(request):
+    """임신 주차 기반 검색 API"""
+    # 요청 데이터 검증
+    if 'query_text' not in request.data or 'pregnancy_week' not in request.data:
+        return Response({"error": "query_text와 pregnancy_week가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    query_text = request.data['query_text']
+    try:
+        pregnancy_week = int(request.data['pregnancy_week'])
+    except (ValueError, TypeError):
+        return Response({"error": "pregnancy_week는 정수여야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # 사용자 정보 구성
+    user_info = {
+        'pregnancy_week': pregnancy_week
+    }
+    
+    try:
+        # 직접 query_by_pregnancy_week 함수 호출
+        logger.info(f"임신 {pregnancy_week}주차 검색 시작: '{query_text}'")
+        
+        # 문서 검색 (직접 호출)
+        documents = query_by_pregnancy_week(query_text, pregnancy_week)
+        
+        # 문서가 없으면 빈 응답 반환
+        if not documents:
+            logger.warning(f"임신 {pregnancy_week}주차 관련 문서를 찾을 수 없습니다.")
+            return Response({
+                "response": f"임신 {pregnancy_week}주차 관련 정보를 찾을 수 없습니다.",
+                "source_documents": [],
+                "using_rag": True
+            })
+        
+        # RAGService 인스턴스 생성하여 응답 생성
+        rag = RAGService()
+        response_text = rag._generate_response_from_docs(documents, query_text)
+        
+        # 소스 문서 정보 생성
+        source_documents = []
+        for doc in documents:
+            source_documents.append({
+                "content": doc.page_content,
+                "metadata": doc.metadata
+            })
+        
+        # 응답 구성
+        result = {
+            "response": response_text,
+            "source_documents": source_documents,
+            "using_rag": True
+        }
+        
+        logger.info(f"임신 {pregnancy_week}주차 검색 결과: {len(source_documents)}개 문서")
+        
+        return Response(result)
+        
+    except Exception as e:
+        logger.error(f"임신 주차 검색 중 오류: {str(e)}")
+        logger.exception("상세 오류:")
+        return Response(
+            {"error": "요청 처리 중 오류가 발생했습니다."}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 def get_filtered_response(request):
     query = request.GET.get('query', '')

@@ -45,7 +45,8 @@ def process_llm_query(user_id, query_text, user_info=None, chat_history=None):
     # RAG 서비스를 통한 응답 시도
     if use_rag:
         try:
-            rag_response = rag_service.query(query_text, user_info, user_id, chat_history)
+            # user_info를 user_context로 사용
+            rag_response = rag_service.query(query_text, user_info)
             
             # RAG 응답이 성공적으로 생성된 경우
             if rag_response['using_rag']:

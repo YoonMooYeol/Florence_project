@@ -11,6 +11,7 @@ from .method import SimpleRAG
 from .models import EmbeddingFile
 from .serializers import EmbeddingFileSerializer
 from .services.embedding_service import EmbeddingService
+from .services.pregnancy_service import PregnancyService
 
 import os
 import logging
@@ -120,6 +121,47 @@ class RAGManualEmbedView(APIView):
                 
         except Exception as e:
             logger.error(f"수동 임베딩 처리 중 오류 발생: {str(e)}", exc_info=True)
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PregnancyInfoView(APIView):
+    """
+    임신 주차에 맞는 정보를 검색합니다.
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, *args, **kwargs):
+        try:
+            # 쿼리 파라미터 가져오기
+            query = request.query_params.get('query', '')
+            pregnancy_week = request.query_params.get('week')
+            
+            # 임신 주차 파라미터 검증
+            if not pregnancy_week or not pregnancy_week.isdigit():
+                return Response({
+                    'status': 'error',
+                    'message': '유효한 임신 주차를 지정해주세요 (1-42)'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            pregnancy_week = int(pregnancy_week)
+            if pregnancy_week < 1 or pregnancy_week > 42:
+                return Response({
+                    'status': 'error',
+                    'message': '임신 주차는 1-42 사이여야 합니다'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 임신 정보 검색
+            results = PregnancyService.search_pregnancy_info(query, pregnancy_week)
+            
+            return Response({
+                'status': 'success',
+                'data': results
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"임신 정보 검색 중 오류 발생: {str(e)}", exc_info=True)
             return Response({
                 'status': 'error',
                 'message': str(e)

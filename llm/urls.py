@@ -13,6 +13,7 @@ URL 패턴:
     /v1/llm/conversations/ - 대화 조회 API (GET)
     /v1/llm/conversations/edit/ - 대화 수정 API (PUT)
     /v1/llm/conversations/delete/ - 대화 삭제 API (DELETE)
+    /v1/llm/pregnancy-search/ - 임신 주차 검색 API (POST)
 """
 
 app_name = 'llm'
@@ -24,6 +25,9 @@ router.register(r'conversations', views.LLMConversationViewSet, basename='conver
 urlpatterns = [
     # LLM 질문 API
     path('', views.LLMQueryView.as_view(), name='llm_query'),
+    
+    # 임신 주차 검색 API
+    path('pregnancy-search/', views.pregnancy_search, name='pregnancy_search'),
     
     # 뷰셋 라우터 포함
     path('', include(router.urls)),
