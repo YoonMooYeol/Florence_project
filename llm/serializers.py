@@ -12,9 +12,11 @@ class QuerySerializer(serializers.Serializer):
 
 class ResponseSerializer(serializers.Serializer):
     response = serializers.CharField()
+    source_documents = serializers.ListField(required=False, default=list)
+    using_rag = serializers.BooleanField(required=False, default=False)
     
     class Meta:
-        fields = ['response']
+        fields = ['response', 'source_documents', 'using_rag']
 
 class LLMConversationSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()

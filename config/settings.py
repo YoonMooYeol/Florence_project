@@ -53,13 +53,14 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt', #JWT 인증
     "rest_framework", #DRF
     "corsheaders", #CORS 허용
-    
+    "drf_spectacular", #API 문서
     
     #my apps
     "rag",
     "accounts",
     "llm",
     "healthcare",
+    "calendars",
 ]
 
 MIDDLEWARE = [
@@ -105,6 +106,7 @@ REST_FRAMEWORK = {
     # 한글 오류 메시지를 위한 예외 처리기 설정
     'EXCEPTION_HANDLER': 'config.exception_handler.custom_exception_handler',
     'NON_FIELD_ERRORS_KEY': 'error',
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 SIMPLE_JWT = {
