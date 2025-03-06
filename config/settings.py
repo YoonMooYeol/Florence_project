@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "accounts",
     "llm",
     "healthcare",
+    "calendars",
 ]
 
 MIDDLEWARE = [

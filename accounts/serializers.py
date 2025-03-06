@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .models import User, Pregnancy
 from django.contrib.auth.password_validation import validate_password
-from django.db.utils import IntegrityError
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
