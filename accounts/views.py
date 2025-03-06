@@ -11,10 +11,6 @@ from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshVi
 from rest_framework.decorators import action
 import logging
 
-
-
-
-
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
