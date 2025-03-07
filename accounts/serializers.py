@@ -94,7 +94,7 @@ class PasswordResetSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
     def validate_email(self, value):
-        user = User.objects.filter(email=value).first()
+        user = User.objects.get(email=value)
         if not user:
             raise serializers.ValidationError("해당 이메일의 사용자가 없습니다.")
         return value
@@ -103,18 +103,18 @@ class PasswordResetCheckSerializer(serializers.Serializer):
     code = serializers.CharField()
 
     def validate_code(self, value):
-        user = User.objects.filter(code=value).first()
+        user = User.objects.get(reset_code=value)
         if not user or not user.check_reset_code(value):
             raise serializers.ValidationError("만료되었거나 잘못된 코드입니다.")
         return value
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
-    code = serializers.CharField()
+    reset_code = serializers.CharField()
     new_password = serializers.CharField()
 
     def validate_code(self, value):
         # 코드로 사용자 존재 여부 확인
-        user = User.objects.filter(reset_code=value).first()
+        user = User.objects.get(reset_code=value)
         if not user or not user.check_reset_code(value):
             raise serializers.ValidationError("만료되었거나 잘못된 코드입니다.")
         return value

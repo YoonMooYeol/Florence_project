@@ -121,7 +121,7 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
         print(f"Received email: {email}")
 
         # 사용자 확인
-        user = User.objects.filter(email__iexact=email).first()
+        user = User.objects.get(email__iexact=email)
         print(f"Found users: {user}")
         if not user:
             return Response({"success": False, "message": "해당 이메일의 사용자가 없습니다."},
@@ -130,7 +130,7 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
         # 랜덤 코드 생성
         code = str(random.randint(100000, 999999))
         user.send_reset_code(code, end_minutes=10)
-
+        print("Reset code:", code)
         # 이메일 전송
         try:
             self.send_mail(email, code)
@@ -184,12 +184,12 @@ class PasswordResetConfirmViewSet(viewsets.GenericViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        code = serializer.validated_data['code']
+        reset_code = serializer.validated_data['code']
         new_password = serializer.validated_data['new_password']
-
+        print(reset_code)
         # 코드로 사용자 탐색
-        user = User.objects.filter(reset_code=code).first()
-        if not user or not user.check_reset_code(code):
+        user = User.objects.get(reset_code=reset_code)
+        if not user or not user.check_reset_code(reset_code):
             return Response({"success": False, "message": "만료되었거나 잘못된 코드입니다."},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -211,13 +211,14 @@ class PasswordResetCheckViewSet(viewsets.GenericViewSet):
         code = serializer.validated_data['code']
 
         # 코드로 사용자 탐색
-        user = User.objects.filter(reset_code=code).first()
+        user = User.objects.get(reset_code=code)
         if not user or not user.check_reset_code(code):
             return Response({"success": False, "message": "만료되었거나 잘못된 코드입니다."},
                             status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"success": True, "message": "인증 완료"},
                         status=status.HTTP_200_OK)
+
 
 
 class ChangePasswordView(generics.UpdateAPIView):
@@ -231,7 +232,7 @@ class ChangePasswordView(generics.UpdateAPIView):
     def put(self, request, *args, **kwargs):  # post 대신 put 사용
         user = self.get_object()
         serializer = self.get_serializer(data=request.data)
-        
+
         if serializer.is_valid():
             # 현재 비밀번호 확인
             if not user.check_password(serializer.validated_data['current_password']):
