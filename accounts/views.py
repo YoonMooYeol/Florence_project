@@ -1,21 +1,33 @@
+import logging
+import random
+import re
+
 from rest_framework import generics, status, viewsets, permissions
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
-from .models import User, Pregnancy
-from .serializers import UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer
-from django.contrib.auth import authenticate
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
-from rest_framework.generics import GenericAPIView
+
+
+from django.contrib.auth import authenticate
 from django.conf import settings
 from django.core.mail import EmailMessage, get_connection
-from django.core.mail.backends.smtp import EmailBackend
-from accounts.models import ResetPasswordUser
 
-import logging
-import random
+from .serializers import(
+    UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
+    PasswordResetSerializer, PasswordResetCheckSerializer
+)
+from .models import User, Pregnancy
+from dotenv import load_dotenv
+
+# .env 파일 로드
+load_dotenv()
+
+
+
+
 
 
 # 로깅 설정
@@ -97,29 +109,33 @@ class TokenRefreshView(JWTTokenRefreshView):
         )
 
 
-class PasswordResetSendCodeView(APIView):
-    """ 이메일 인증 - 코드 전송 """
-    permission_classes = []
-    serializer_class = None
+class PasswordResetViewSet(viewsets.GenericViewSet):
+    """ 비밀번호 재설정 코드 전송 뷰셋 """
+    permission_classes = [AllowAny]
+    serializer_class = PasswordResetSerializer
 
-    def post(self, request, *args, **kwargs):
-        email = request.data.get('email')
-        if not email:
-            return Response({"success": False, "message": "이메일이 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+        print(f"Received email: {email}")
 
         # 사용자 확인
-        user = ResetPasswordUser.objects.filter(email=email).first()
+        user = User.objects.filter(email__iexact=email).first()
+        print(f"Found users: {user}")
         if not user:
-            return Response({"success": False, "message": "해당 이메일의 사용자가 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"success": False, "message": "해당 이메일의 사용자가 없습니다."},
+                            status=status.HTTP_404_NOT_FOUND)
 
         # 랜덤 코드 생성
         code = str(random.randint(100000, 999999))
-        user.set_reset_code(code, expiry_minutes=10)
+        user.send_reset_code(code, end_minutes=10)
 
         # 이메일 전송
         try:
             self.send_mail(email, code)
-            return Response({"success": True, "message": "인증 코드 전송 성공"}, status=status.HTTP_200_OK)
+            return Response({"success": True, "message": "인증 코드 전송 성공"},
+                            status=status.HTTP_200_OK)
         except ValueError:
             return Response({"success": False, "message": "정확한 이메일 주소를 입력해 주세요."},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -130,7 +146,7 @@ class PasswordResetSendCodeView(APIView):
     def send_mail(self, recipient_email, code):
         """ 이메일 전송 """
         # 이메일 주소 형식 확인
-        if '@' not in recipient_email:
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", recipient_email):
             raise ValueError("정확한 이메일 주소를 입력해 주세요.")
 
         domain = recipient_email.split('@')[-1].lower()
@@ -138,17 +154,19 @@ class PasswordResetSendCodeView(APIView):
 
         try:
             connection = get_connection(
-                backend='django.core.mail.backends.smtp.EmailBackend',
+
+            # 이메일 설정을 settings에서 가져오기
                 host=config['HOST'],
+                use_tls=config['USE_TLS'],
                 port=config['PORT'],
                 username=config['HOST_USER'],
-                password=config['PASSWORD'],
-                use_tls=config.get('USE_TLS', True)
+                password=config['HOST_PASSWORD'],
+
             )
             email_message = EmailMessage(
                 subject="[Touch_Moms] 비밀번호 재설정 코드 안내",
                 body=f"안녕하세요\n비밀번호 재설정 인증코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
-                from_email=config['USER'],
+                from_email=config['HOST_USER'],
                 to=[recipient_email],
                 connection=connection
             )
@@ -156,61 +174,50 @@ class PasswordResetSendCodeView(APIView):
             email_message.send(fail_silently=False)
 
         except Exception as e:
+            logger.error(f"이메일 전송 실패: {str(e)}")
             raise Exception(f"이메일 전송 실패: {str(e)}")
 
 
-class PasswordResetCheckView(GenericAPIView):
-    """ 이메일 인증 _ 코드 확인 """
-    permission_classes = [AllowAny]
+class PasswordResetConfirmViewSet(viewsets.GenericViewSet):
+    """ 비밀번호 재설정 완료 뷰셋 """
 
-    def post(self, request, *args, **kwargs):
-        code = request.data.get('code')
-        if not code:
-            return Response({"success": False,"message":"인증 코드가 필요합니다"},
-                            status=status.HTTP_400_BAD_REQUEST)
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        code = serializer.validated_data['code']
+        new_password = serializer.validated_data['new_password']
 
-        user = ResetPasswordUser.objects.filter(code=code).first()
+        # 코드로 사용자 탐색
+        user = User.objects.filter(reset_code=code).first()
         if not user or not user.check_reset_code(code):
-            return Response({"success": False,"message":"만료된 코드입니다."}, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response({"success":True,"message":"인증 완료"},status=status.HTTP_200_OK)
-
-
-class PasswordResetConfirmView(APIView):
-    """ password 재설정"""
-    def post(self, request, *args, **kwargs):
-        code = request.data.get('code')
-        new_password = request.data.get('new_password')
-
-        if not code or not new_password:
-            return Response({"success":False, "message":"인증 코드 및 새 비밀번호가 모두 필요합니다."},
-                            status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # 코드와 일치하는 사용자 탐색
-        try:
-            user = ResetPasswordUser.objects.get(reset_code=code)
-        except ResetPasswordUser.DoesNotExist:
-            return Response(
-                {"success":False, "message":"정확한 코드를 입력하세요"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # 코드 만료 여부 확인
-        if not user.check_reset_code(code):
-            return Response(
-                {"success":False, "message":"인증 코드가 만료되었습니다"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"success": False, "message": "만료되었거나 잘못된 코드입니다."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         # 새 비밀번호 설정
         user.set_password(new_password)
         user.clear_reset_code()
 
-        return Response(
-            {"success":True, "message":"비밀번호가 성공적으로 재설정되었습니다."},
-            status=status.HTTP_200_OK
-        )
+        return Response({"success": True, "message": "비밀번호가 성공적으로 재설정되었습니다."},
+                        status=status.HTTP_200_OK)
+
+class PasswordResetCheckViewSet(viewsets.GenericViewSet):
+    """ 비밀번호 재설정 코드 확인 뷰셋 """
+    permission_classes = [AllowAny]
+    serializer_class = PasswordResetCheckSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        code = serializer.validated_data['code']
+
+        # 코드로 사용자 탐색
+        user = User.objects.filter(reset_code=code).first()
+        if not user or not user.check_reset_code(code):
+            return Response({"success": False, "message": "만료되었거나 잘못된 코드입니다."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"success": True, "message": "인증 완료"},
+                        status=status.HTTP_200_OK)
 
 
 class ChangePasswordView(generics.UpdateAPIView):
