@@ -78,9 +78,13 @@ ROOT_URLCONF = "config.urls"
 
 
 CORS_ALLOW_ALL_ORIGINS = True #TODO: 모든 도메인에서 접근 가능하도록 하는 코드. 배포 후 주석처리
-CORS_ALLOW_CREDENTIALS = True #TODO: 쿠키, 인증 토큰 같은 민감한 인증 정보를 포함한 요청을 허용.
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "content-type",
+]
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Vue 개발 서버
 ]
 
 
