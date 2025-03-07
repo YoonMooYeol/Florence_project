@@ -28,7 +28,6 @@ class User(AbstractUser):
     phone_number = models.CharField(
         max_length=15, 
         unique=True,
-        null=True,
         blank=True,
         verbose_name='전화번호',
         error_messages={
