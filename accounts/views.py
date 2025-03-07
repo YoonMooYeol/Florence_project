@@ -175,18 +175,42 @@ class PasswordResetCheckView(GenericAPIView):
 
         return Response({"success":True,"message":"인증 완료"},status=status.HTTP_200_OK)
 
-# class PasswordResetConfirmView(GenericAPIView):
-#     """ password 재설정"""
-#     # 코드, 새 비밀번호 모두 필요 _ 랜덤 코드 만료 전 재설정
-#     # 코드 일치 유저 찾기
-#     # 만료 시간 체크
-#     # 비밀번호 재설정
 
-# class FindPasswordView(generics.RetrieveAPIView):
-#     """ 비밀번호 찾기"""
+class PasswordResetConfirmView(APIView):
+    """ password 재설정"""
+    def post(self, request, *args, **kwargs):
+        code = request.data.get('code')
+        new_password = request.data.get('new_password')
 
-# class FindUsernameView(generics.GenericAPIView):
-#     """ 아이디 찾기 """
+        if not code or not new_password:
+            return Response({"success":False, "message":"인증 코드 및 새 비밀번호가 모두 필요합니다."},
+                            status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 코드와 일치하는 사용자 탐색
+        try:
+            user = ResetPasswordUser.objects.get(reset_code=code)
+        except ResetPasswordUser.DoesNotExist:
+            return Response(
+                {"success":False, "message":"정확한 코드를 입력하세요"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 코드 만료 여부 확인
+        if not user.check_reset_code(code):
+            return Response(
+                {"success":False, "message":"인증 코드가 만료되었습니다"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 새 비밀번호 설정
+        user.set_password(new_password)
+        user.clear_reset_code()
+
+        return Response(
+            {"success":True, "message":"비밀번호가 성공적으로 재설정되었습니다."},
+            status=status.HTTP_200_OK
+        )
 
 
 class ChangePasswordView(generics.UpdateAPIView):
@@ -285,3 +309,5 @@ class PregnancyViewSet(viewsets.ModelViewSet):
     #         status=status.HTTP_404_NOT_FOUND
     #     )
 
+# class FindUsernameView(generics.GenericAPIView):
+#     """ 아이디 찾기 """
