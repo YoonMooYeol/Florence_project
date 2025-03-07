@@ -80,17 +80,24 @@ class User(AbstractUser):
         return self.name
 
     # 추가
-    def send_reset_code(self, code, end_minutes=10):
+    def send_reset_code(self, reset_code, end_minutes=10):
         """ 재설정 코드 및 만료 시간 설정 """
 
-        self.reset_code = code
+        self.reset_code = reset_code
         self.reset_code_end = timezone.now() + datetime.timedelta(minutes=end_minutes)
         self.save()
 
-    def check_reset_code(self, code):
+
+    def check_reset_code(self, reset_code):
         """ 코드 일치 & 만료 확인 """
-        is_match = self.reset_code == code
-        is_expired = self.reset_code_end if self.reset_code_end else False# 만료 시간 확인
+        # 코드가 일치하는지 확인
+        is_match = self.reset_code == reset_code
+
+    # 만료 시간 확인 (reset_code_end가 None이 아니라면)
+        if self.reset_code_end:
+            is_expired = timezone.now() > self.reset_code_end
+        else:
+            is_expired = False
 
         return is_match and not is_expired
 
@@ -105,7 +112,7 @@ class User(AbstractUser):
             Group, related_name='info_user_groups', blank=True, help_text='이 사용자가 속한 그룹들.'
         )
         user_permissions = models.ManyToManyField(
-            Permission, related_name='infosta_user_permissions', blank=True, help_text='이 사용자의 권한들.'
+            Permission, related_name='info_user_permissions', blank=True, help_text='이 사용자의 권한들.'
         )
 
 
