@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (RegisterView, LoginView, TokenRefreshView, PregnancyViewSet, ListUsersView,
                     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetSendCodeView,
-                    PasswordResetCheckView
+                    PasswordResetCheckView, PasswordResetConfirmView
                     )
 
 pregnancy_router = DefaultRouter()
@@ -21,7 +21,8 @@ urlpatterns = [
     path('users/me/', UpdateUserInfoView.as_view(), name='user-me'),  # 현재 사용자 정보 수정
     path('users/me/change-password/', ChangePasswordView.as_view(), name='change-password'), # 현재 사용자 비밀번호 변경
 
-    path('login/send-code', PasswordResetSendCodeView.as_view(), name="send-code"),  # 이메일 인증 - 코드 전송
-    path('login/check-code', PasswordResetCheckView.as_view(), name="check-code"),
+    path('login/send-code/', PasswordResetSendCodeView.as_view(), name="send-code"),  # 이메일 인증 - 코드 전송
+    path('login/check-code/', PasswordResetCheckView.as_view(), name="check-code"),  # 사용자 입력 코드와 인증 코드가 동일한지 확인
+    path('login/pw-reset/', PasswordResetConfirmView.as_view(), name="pw-reset")
 
 ]
