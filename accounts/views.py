@@ -10,7 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 from rest_framework.generics import GenericAPIView
 from django.conf import settings
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, get_connection
 from django.core.mail.backends.smtp import EmailBackend
 from accounts.models import ResetPasswordUser
 
@@ -97,7 +97,7 @@ class TokenRefreshView(JWTTokenRefreshView):
         )
 
 
-class PasswordResetSendCodeView(GenericAPIView):
+class PasswordResetSendCodeView(APIView):
     """ 이메일 인증 - 코드 전송 """
     permission_classes = []
     serializer_class = None
@@ -107,39 +107,56 @@ class PasswordResetSendCodeView(GenericAPIView):
         if not email:
             return Response({"success": False, "message": "이메일이 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 사용자 확인
         user = ResetPasswordUser.objects.filter(email=email).first()
         if not user:
-            return Response({"success": False,
-                             "message": "해당 이메일의 사용자가 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"success": False, "message": "해당 이메일의 사용자가 없습니다."}, status=status.HTTP_404_NOT_FOUND)
 
+        # 랜덤 코드 생성
         code = str(random.randint(100000, 999999))
         user.set_reset_code(code, expiry_minutes=10)
 
+        # 이메일 전송
         try:
             self.send_mail(email, code)
             return Response({"success": True, "message": "인증 코드 전송 성공"}, status=status.HTTP_200_OK)
         except ValueError:
             return Response({"success": False, "message": "정확한 이메일 주소를 입력해 주세요."},
                             status=status.HTTP_400_BAD_REQUEST)
-        except Exception:
-            return Response({"success": False, "message": "이메일 전송 중 오류가 발생했습니다."},
+        except Exception as e:
+            return Response({"success": False, "message": f"이메일 전송 중 오류가 발생했습니다: {str(e)}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def send_mail(self, recipient_email, code):
         """ 이메일 전송 """
+        # 이메일 주소 형식 확인
         if '@' not in recipient_email:
             raise ValueError("정확한 이메일 주소를 입력해 주세요.")
 
         domain = recipient_email.split('@')[-1].lower()
         config = settings.SMTP_CONFIG.get(domain, settings.EMAIL_CONFIG)
 
-        EmailMessage(
-            subject="[Touch_Moms] 비밀번호 재설정 코드 안내",
-            body=f"안녕하세요\n비밀번호 재설정 인증코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
-            from_email=config['USER'],
-            to=[recipient_email],
-            connection=EmailBackend(**config)
-        ).send(fail_silently=False)
+        try:
+            connection = get_connection(
+                backend='django.core.mail.backends.smtp.EmailBackend',
+                host=config['HOST'],
+                port=config['PORT'],
+                username=config['HOST_USER'],
+                password=config['PASSWORD'],
+                use_tls=config.get('USE_TLS', True)
+            )
+            email_message = EmailMessage(
+                subject="[Touch_Moms] 비밀번호 재설정 코드 안내",
+                body=f"안녕하세요\n비밀번호 재설정 인증코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
+                from_email=config['USER'],
+                to=[recipient_email],
+                connection=connection
+            )
+
+            email_message.send(fail_silently=False)
+
+        except Exception as e:
+            raise Exception(f"이메일 전송 실패: {str(e)}")
 
 
 class PasswordResetCheckView(GenericAPIView):

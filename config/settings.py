@@ -204,36 +204,36 @@ EMAIL_SITE= os.getenv("EMAIL_SITE", "Gmail")    #기본 gmail로 설정
 
 SMTP_CONFIG = {
     "GMAIL":{
-        "EMAIL_HOST" : "smtp.gmail.com",
-        "EMAIL_USE_TLS" : True,
-        "EMAIL_PORT" : 587,
-            "EMAIL_HOST_USER": os.getenv('GMAIL_USER', 'your_gmail@gmail.com'),
-            "EMAIL_HOST_PASSWORD": os.getenv('GMAIL_PASSWORD', 'your_gmail_password')
+        "HOST" : "smtp.gmail.com",
+        "USE_TLS" : True,
+        "PORT" : 587,
+            "HOST_USER": os.getenv('GMAIL_USER', 'your_gmail@gmail.com'),
+            "HOST_PASSWORD": os.getenv('GMAIL_PASSWORD', 'your_gmail_password')
     },
     "NAVER":{
-        "EMAIL_HOST" : "smtp.gmail.com",
-        "EMAIL_USE_TLS" : True,
-        "EMAIL_PORT" : 587,
-        "EMAIL_HOST_USER": os.getenv('NAVER_USER', 'NAVER_EMAIL_USER'),
-        "EMAIL_HOST_PASSWORD": os.getenv('NAVER_PASSWORD', 'NAVER_PASSWORD_USER')
+        "HOST" : "smtp.naver.com",
+        "USE_TLS" : True,
+        "PORT" : 587,
+        "HOST_USER": os.getenv('NAVER_USER', 'NAVER_EMAIL_USER'),
+        "HOST_PASSWORD": os.getenv('NAVER_PASSWORD', 'NAVER_PASSWORD_USER')
     },
     "KAKAO":{
-        "EMAIL_HOST" : "smtp.gmail.com",
-        "EMAIL_USE_TLS" : True,
-        "EMAIL_PORT" : 587,
-        "EMAIL_HOST_USER": os.getenv('KAKAO_USER', 'your_gmail@gmail.com'),
-        "EMAIL_HOST_PASSWORD": os.getenv('KAKAO_PASSWORD', 'your_gmail_password')
+        "HOST" : "smtp.kakao.com",
+        "USE_TLS" : True,
+        "PORT" : 587,
+        "HOST_USER": os.getenv('KAKAO_USER', 'your_gmail@gmail.com'),
+        "HOST_PASSWORD": os.getenv('KAKAO_PASSWORD', 'your_gmail_password')
     }
 }
 
 EMAIL_CONFIG = SMTP_CONFIG.get(EMAIL_SITE, SMTP_CONFIG['GMAIL'])
 
-EMAIL_HOST = EMAIL_CONFIG['EMAIL_HOST']
-EMAIL_USE_TLS = EMAIL_CONFIG['EMAIL_USE_TLS']
-EMAIL_PORT = EMAIL_CONFIG['EMAIL_PORT']
-EMAIL_HOST_USER = EMAIL_CONFIG['EMAIL_HOST_USER']
-EMAIL_HOST_PASSWORD = EMAIL_CONFIG['EMAIL_HOST_PASSWORD']
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+HOST = EMAIL_CONFIG['HOST']
+USE_TLS = EMAIL_CONFIG['USE_TLS']
+PORT = EMAIL_CONFIG['PORT']
+HOST_USER = EMAIL_CONFIG['HOST_USER']
+HOST_PASSWORD = EMAIL_CONFIG['HOST_PASSWORD']
+DEFAULT_FROM_EMAIL = HOST_USER
 
 
 
