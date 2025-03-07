@@ -1,5 +1,8 @@
+import timedelta
 from django.db import models
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, Group, Permission
+from django.utils import timezone
+import datetime
 import uuid
 
 class User(AbstractUser):
@@ -56,6 +59,15 @@ class User(AbstractUser):
     def __str__(self):
         return self.name
 
+    # 관련된 필드들에 대해 related_name 다르게 설정
+    groups = models.ManyToManyField(
+        Group, related_name='user_groups', blank=True, help_text='이 사용자가 속한 그룹들.'
+    )
+    user_permissions = models.ManyToManyField(
+        Permission, related_name='user_permissions', blank=True, help_text='이 사용자의 권한들.'
+    )
+
+
 class Pregnancy(models.Model):
     """임신 정보 모델"""
     pregnancy_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -75,3 +87,37 @@ class Pregnancy(models.Model):
 
     def __str__(self):
         return f"{self.user.name}님의 임신 정보"
+
+
+class ResetPasswordUser(AbstractUser):
+    """ 비밀번호 재설정 모델 """
+    reset_code = models.CharField(max_length=6, blank=True, null=True)
+    reset_code_end = models.DateTimeField(blank=True, null=True)
+
+    def set_reset_code(self, code, end_minutes):
+        """ 재설정 코드 만료 시간 설정 """
+        self.reset_code = code
+        self.reset_code_end = timezone.now() + datetime.timedelta(minutes=end_minutes)
+        self.save()
+
+    def check_reset_code(self, code):
+        """ 코드 일치 & 만료 확인 """
+        is_match = self.reset_code == code
+        is_expired = self.reset_code_end and timezone.now() <= self.reset_code_end
+
+        return is_match and is_expired
+
+    def clear_reset_code(self):
+        """ 만료 코드 및 시간 초기화 """
+        self.reset_code = None
+        self.reset_code_end = None
+        self.save()
+
+    # 관련된 필드들에 대해 related_name 다르게 설정
+    groups = models.ManyToManyField(
+        Group, related_name='reset_password_user_groups', blank=True, help_text='이 비밀번호 재설정 사용자가 속한 그룹들.'
+    )
+    user_permissions = models.ManyToManyField(
+        Permission, related_name='reset_password_user_permissions', blank=True, help_text='이 비밀번호 재설정 사용자의 권한들.'
+    )
+
