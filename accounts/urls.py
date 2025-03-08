@@ -29,6 +29,6 @@ urlpatterns = [
     path('users/me/', UpdateUserInfoView.as_view(), name='user-me'),  # 현재 사용자 정보 수정
     path('users/me/change-password/', ChangePasswordView.as_view(), name='change-password'), # 현재 사용자 비밀번호 변경
 
-    path('', include(router.urls)),
+    path('', include(router.urls)), # 이메일 인증 및 비밀번호 재설정
 
 ]
