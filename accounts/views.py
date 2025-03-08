@@ -118,11 +118,11 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email']
-        print(f"Received email: {email}")
+
 
         # 사용자 확인
         user = User.objects.get(email__iexact=email)
-        print(f"Found users: {user}")
+
         if not user:
             return Response({"success": False, "message": "해당 이메일의 사용자가 없습니다."},
                             status=status.HTTP_404_NOT_FOUND)
@@ -130,7 +130,7 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
         # 랜덤 코드 생성
         code = str(random.randint(100000, 999999))
         user.send_reset_code(code, end_minutes=10)
-        print("Reset code:", code)
+
         # 이메일 전송
         try:
             self.send_mail(email, code)
@@ -186,7 +186,7 @@ class PasswordResetConfirmViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         reset_code = serializer.validated_data['code']
         new_password = serializer.validated_data['new_password']
-        print(reset_code)
+
         # 코드로 사용자 탐색
         user = User.objects.get(reset_code=reset_code)
         if not user or not user.check_reset_code(reset_code):
@@ -218,7 +218,6 @@ class PasswordResetCheckViewSet(viewsets.GenericViewSet):
 
         return Response({"success": True, "message": "인증 완료"},
                         status=status.HTTP_200_OK)
-
 
 
 class ChangePasswordView(generics.UpdateAPIView):
