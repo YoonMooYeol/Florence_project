@@ -17,8 +17,8 @@ from .serializers import (
     ChatMessageCreateSerializer, ChatRoomSummarizeSerializer
 )
 from accounts.models import Pregnancy  # Pregnancy 모델 임포트
-from langchain_community.document_loaders import JSONLoader  # 예시, 실제 사용하는 loader로 변경
-from langchain_community.retrievers import TFIDFRetriever  # 예시
+from langchain_community.document_loaders import JSONLoader
+from langchain_community.retrievers import TFIDFRetriever
 from langchain.chains import RetrievalQA
 from .rag_service import rag_service, query_by_pregnancy_week, RAGService  # RAG 서비스 직접 임포트
 
