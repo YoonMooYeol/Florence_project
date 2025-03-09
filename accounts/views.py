@@ -403,8 +403,27 @@ class KakaoLoginCallbackView(APIView):
         refresh.access_token['email'] = user.email
         refresh.access_token['is_pregnant'] = user.is_pregnant
 
+        # 환경에 따라 적절한 프론트엔드 콜백 URL 사용
+        # 환경 변수로 명시적으로 FE_ENV를 설정하거나 DJANGO_ENV를 확인
+        # FE_ENV=local 또는 FE_ENV=production으로 설정 가능
+        fe_env = os.environ.get('FE_ENV', 'local')  # 기본값은 'local'
+        django_env = os.environ.get('DJANGO_ENV', 'development')  # 기본값은 'development'
+        
+        # 명시적인 FE_ENV 설정이 없으면 DJANGO_ENV를 기준으로 판단
+        is_production = fe_env == 'production' or django_env == 'production'
+        
+        # request.get_host()를 출력하여 디버깅에 도움이 되도록 함
+        host = request.get_host()
+        print(f"Current host: {host}, Environment: {'production' if is_production else 'local'}")
+        
+        if is_production:
+            frontend_redirect_uri = "https://florence-project-fe.vercel.app/kakao/callback"
+        else:
+            frontend_redirect_uri = "http://localhost:5173/kakao/callback"
+        
+        print(f"Redirecting to: {frontend_redirect_uri}")
+
         # URL 파라미터로 토큰 전달
-        frontend_redirect_uri = "http://localhost:5173/kakao/callback"  # 프론트엔드 콜백 경로
         params = {
             'token': str(refresh.access_token),
             'refresh': str(refresh),
@@ -445,24 +464,41 @@ class NaverLoginCallbackView(APIView):
     
         # code로 네이버 액세스 토큰 요청
         token_api_url = "https://nid.naver.com/oauth2.0/token"
+        
+        # 환경 변수 확인 및 출력
+        naver_client_id = os.getenv('NAVER_CLIENT_ID')
+        naver_client_secret = os.getenv('NAVER_CLIENT_SECRET')
+        
+        print(f"네이버 클라이언트 ID: {naver_client_id[:4]}..." if naver_client_id else "네이버 클라이언트 ID가 설정되지 않았습니다")
+        print(f"네이버 클라이언트 시크릿: {naver_client_secret[:4]}..." if naver_client_secret else "네이버 클라이언트 시크릿이 설정되지 않았습니다")
+        
+        if not naver_client_id or not naver_client_secret:
+            print("❌ 오류: 네이버 API 키가 설정되지 않았습니다.")
+            return Response({'error': '서버 구성 오류: 네이버 API 키가 설정되지 않았습니다.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
         data = {
             'grant_type': 'authorization_code',
-            'client_id': os.getenv('NAVER_CLIENT_ID'),  # 네이버 developers에서 발급한 Client ID
-            'client_secret': os.getenv('NAVER_CLIENT_SECRET'),  # 네이버 developers에서 발급한 Client Secret
+            'client_id': naver_client_id,
+            'client_secret': naver_client_secret,
             'code': code,
             'state': state
         }
         print(f"토큰 요청 URL: {token_api_url}")
         print(f"토큰 요청 데이터: {data}")
-        print(f"네이버 클라이언트 ID: {os.getenv('NAVER_CLIENT_ID')}")
-        print(f"네이버 클라이언트 시크릿: {os.getenv('NAVER_CLIENT_SECRET')[:4]}...")  # 시크릿 일부만 표시
+        print(f"네이버 클라이언트 ID: {naver_client_id}")
+        print(f"네이버 클라이언트 시크릿: {naver_client_secret[:4]}...")  # 시크릿 일부만 표시
         
         try:
             token_response = requests.post(token_api_url, data=data)
             print(f"토큰 응답 상태 코드: {token_response.status_code}")
             print(f"토큰 응답 내용: {token_response.text}")
             
-            token_json = token_response.json()
+            try:
+                token_json = token_response.json()
+            except Exception as json_error:
+                print(f"❌ JSON 파싱 오류: {str(json_error)}, 응답 내용: {token_response.text}")
+                return Response({'error': f'네이버 응답을 JSON으로 파싱할 수 없습니다: {str(json_error)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
             if 'access_token' not in token_json:
                 print(f"❌ 오류: 네이버 액세스 토큰을 받지 못했습니다. 응답: {token_json}")
                 return Response({'error': '네이버 액세스 토큰을 받지 못했습니다.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -486,7 +522,12 @@ class NaverLoginCallbackView(APIView):
                 print("❌ 오류: 네이버 사용자 정보를 가져오지 못했습니다.")
                 return Response({'error': '네이버 사용자 정보를 가져오지 못했습니다.'}, status=status.HTTP_400_BAD_REQUEST)
 
-            profile_data = profile_response.json()
+            try:
+                profile_data = profile_response.json()
+            except Exception as json_error:
+                print(f"❌ 프로필 JSON 파싱 오류: {str(json_error)}, 응답 내용: {profile_response.text}")
+                return Response({'error': f'네이버 프로필 응답을 JSON으로 파싱할 수 없습니다: {str(json_error)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
             if profile_data.get('resultcode') != '00' or 'response' not in profile_data:
                 print(f"❌ 오류: 네이버 사용자 정보가 유효하지 않습니다. 응답: {profile_data}")
                 return Response({'error': '네이버 사용자 정보가 유효하지 않습니다.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -541,13 +582,23 @@ class NaverLoginCallbackView(APIView):
             print(f"✅ JWT 토큰이 생성되었습니다.")
 
             # 환경에 따라 적절한 프론트엔드 콜백 URL 사용
-            is_production = os.environ.get('DJANGO_ENV') == 'production' or request.get_host() != 'localhost:8000'
+            # 환경 변수로 명시적으로 FE_ENV를 설정하거나 DJANGO_ENV를 확인
+            # FE_ENV=local 또는 FE_ENV=production으로 설정 가능
+            fe_env = os.environ.get('FE_ENV', 'local')  # 기본값은 'local'
+            django_env = os.environ.get('DJANGO_ENV', 'development')  # 기본값은 'development'
+            
+            # 명시적인 FE_ENV 설정이 없으면 DJANGO_ENV를 기준으로 판단
+            is_production = fe_env == 'production' or django_env == 'production'
+            
+            # request.get_host()를 출력하여 디버깅에 도움이 되도록 함
+            host = request.get_host()
+            print(f"Current host: {host}, Environment: {'production' if is_production else 'local'}")
             
             if is_production:
                 frontend_redirect_uri = "https://florence-project-fe.vercel.app/naver/callback"
             else:
                 frontend_redirect_uri = "http://localhost:5173/naver/callback"
-                
+            
             print(f"리디렉션 URL: {frontend_redirect_uri}")
                 
             params = {
@@ -563,8 +614,11 @@ class NaverLoginCallbackView(APIView):
             redirect_url = f"{frontend_redirect_uri}?{query_string}"
             
             print(f"최종 리디렉션 URL: {redirect_url[:100]}...")
+            print("토큰 정보: ", params['token'][:20], "...")
+            print("사용자 ID: ", params['user_id'])
             print("======= 네이버 로그인 콜백 종료 =======\n")
             
+            # HttpResponseRedirect로 프론트엔드 페이지로 리디렉션
             return HttpResponseRedirect(redirect_url)
         except Exception as e:
             print(f"❌ 예외 발생: {str(e)}")

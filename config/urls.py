@@ -30,4 +30,11 @@ urlpatterns = [
     # API 문서
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    
+    # dj-rest-auth 엔드포인트
+    path('v1/dj-rest-auth/', include('dj_rest_auth.urls')),
+    path('v1/dj-rest-auth/registration/', include('dj_rest_auth.registration.urls')),
+    
+    # 소셜 로그인 URL
+    path('v1/accounts/social/', include('allauth.socialaccount.urls')),
 ]
