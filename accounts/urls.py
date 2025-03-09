@@ -1,6 +1,7 @@
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from .views import KakaoLoginCallbackView, RegisterView, LoginView, TokenRefreshView, PregnancyViewSet, ListUsersView, UserDetailView, UpdateUserInfoView, ChangePasswordView, NaverLoginCallbackView
 
 from .views import (
     RegisterView, LoginView, TokenRefreshView, PregnancyViewSet, ListUsersView,
@@ -31,4 +32,7 @@ urlpatterns = [
 
     path('', include(router.urls)), # 이메일 인증 및 비밀번호 재설정
 
+    
+    path('kakao/callback/', KakaoLoginCallbackView.as_view(), name='kakao-callback'),
+    path('naver/callback/', NaverLoginCallbackView.as_view(), name='naver-callback'),  # 네이버 로그인 콜백
 ]
