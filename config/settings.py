@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    
+
     #third party apps
     'rest_framework_simplejwt', #JWT 인증
     "rest_framework", #DRF
@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount',
     'allauth.socialaccount.providers.kakao',
     'allauth.socialaccount.providers.naver',
+    'allauth.socialaccount.providers.google',
     
     # REST API 연동
     'dj_rest_auth',
@@ -317,6 +318,13 @@ SOCIALACCOUNT_PROVIDERS = {
         'APP': {
             'client_id': os.environ.get('NAVER_CLIENT_ID', ''),
             'secret': os.environ.get('NAVER_CLIENT_SECRET', ''),
+            'key': ''
+        }
+    },
+    'google': {
+        'APP': {
+            'client_id': os.environ.get('GOOGLE_CLIENT_ID', ''),
+            'secret': os.environ.get('GOOGLE_CLIENT_SECRET', ''),
             'key': ''
         }
     }
