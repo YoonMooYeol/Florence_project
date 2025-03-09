@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import KakaoLoginCallbackView, RegisterView, LoginView, TokenRefreshView, PregnancyViewSet, ListUsersView, UserDetailView, UpdateUserInfoView, ChangePasswordView
+from .views import KakaoLoginCallbackView, RegisterView, LoginView, TokenRefreshView, PregnancyViewSet, ListUsersView, UserDetailView, UpdateUserInfoView, ChangePasswordView, NaverLoginCallbackView
 
 pregnancy_router = DefaultRouter()
 pregnancy_router.register(r'pregnancies', PregnancyViewSet, basename='pregnancy')
@@ -18,4 +18,5 @@ urlpatterns = [
     path('users/me/change-password/', ChangePasswordView.as_view(), name='change-password'), # 현재 사용자 비밀번호 변경
     
     path('kakao/callback/', KakaoLoginCallbackView.as_view(), name='kakao-callback'),
+    path('naver/callback/', NaverLoginCallbackView.as_view(), name='naver-callback'),  # 네이버 로그인 콜백
 ]
