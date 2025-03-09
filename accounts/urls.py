@@ -1,12 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import KakaoLoginCallbackView, RegisterView, LoginView, TokenRefreshView, PregnancyViewSet, ListUsersView, UserDetailView, UpdateUserInfoView, ChangePasswordView, NaverLoginCallbackView
+from .views import KakaoLoginCallbackView, RegisterView, LoginView, TokenRefreshView, PregnancyViewSet, ListUsersView, UserDetailView, UpdateUserInfoView, ChangePasswordView, NaverLoginCallbackView, GoogleLoginCallbackView
 
 from .views import (
     RegisterView, LoginView, TokenRefreshView, PregnancyViewSet, ListUsersView,
     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetViewSet,
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
-    NaverLoginCallbackView
+    NaverLoginCallbackView, GoogleLoginCallbackView
                     )
 
 
@@ -35,6 +35,6 @@ urlpatterns = [
     # 소셜 로그인 콜백 URL
     path('kakao/callback/', KakaoLoginCallbackView.as_view(), name='kakao-callback'),
     path('naver/callback/', NaverLoginCallbackView.as_view(), name='naver-callback'),
-    path('google/callback/', NaverLoginCallbackView.as_view(), name='google-callback'),  # TODO: 구글 로그인 콜백 구현 필요
+    path('google/callback/', GoogleLoginCallbackView.as_view(), name='google-callback'),
     path('apple/callback/', NaverLoginCallbackView.as_view(), name='apple-callback'),  # TODO: 애플 로그인 콜백 구현 필요
 ]
