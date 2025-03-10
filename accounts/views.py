@@ -18,6 +18,7 @@ import logging
 from dotenv import load_dotenv
 from django.contrib.auth.hashers import get_random_string
 from django.http import HttpResponseRedirect, HttpResponse
+from rest_framework.generics import GenericAPIView
 
 
 from django.contrib.auth import authenticate
@@ -26,7 +27,7 @@ from django.core.mail import EmailMessage, get_connection
 
 from .serializers import(
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
-    PasswordResetSerializer, PasswordResetCheckSerializer
+    PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer
 )
 from .models import User, Pregnancy
 from dotenv import load_dotenv
@@ -39,7 +40,6 @@ load_dotenv()
 
 
 
-load_dotenv()
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
@@ -190,25 +190,39 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
 
 class PasswordResetConfirmViewSet(viewsets.GenericViewSet):
     """ 비밀번호 재설정 완료 뷰셋 """
+    permission_classes = [AllowAny]
+    serializer_class = PasswordResetConfirmSerializer
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        reset_code = serializer.validated_data['code']
-        new_password = serializer.validated_data['new_password']
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            reset_code = serializer.validated_data['reset_code']
+            new_password = serializer.validated_data['new_password']
 
-        # 코드로 사용자 탐색
-        user = User.objects.get(reset_code=reset_code)
-        if not user or not user.check_reset_code(reset_code):
-            return Response({"success": False, "message": "만료되었거나 잘못된 코드입니다."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # 코드로 사용자 탐색
+            user = User.objects.filter(reset_code=reset_code).first()  # 필터로 사용자 찾기
+            if not user:
+                return Response({"success": False, "message": "잘못된 인증 코드입니다."},
+                                status=status.HTTP_400_BAD_REQUEST)
 
-        # 새 비밀번호 설정
-        user.set_password(new_password)
-        user.clear_reset_code()
+            # 인증 코드 만료 여부 확인
+            if not user.check_reset_code(reset_code):
+                return Response({"success": False, "message": "인증 코드가 만료되었습니다."},
+                                status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"success": True, "message": "비밀번호가 성공적으로 재설정되었습니다."},
-                        status=status.HTTP_200_OK)
+            # 새 비밀번호 설정
+            user.set_password(new_password)
+            user.clear_reset_code()  # 인증 코드 초기화
+
+            return Response({"success": True, "message": "비밀번호가 성공적으로 재설정되었습니다."},
+                            status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # 예외 메시지 로그 출력
+            logger.error(f"서버 오류 발생: {str(e)}")
+            return Response({"success": False, "message": f"서버 오류: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class PasswordResetCheckViewSet(viewsets.GenericViewSet):
     """ 비밀번호 재설정 코드 확인 뷰셋 """
@@ -218,11 +232,11 @@ class PasswordResetCheckViewSet(viewsets.GenericViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        code = serializer.validated_data['code']
+        code = serializer.validated_data['reset_code']  # 'reset_code'로 수정
 
         # 코드로 사용자 탐색
-        user = User.objects.get(reset_code=code)
-        if not user or not user.check_reset_code(code):
+        user = User.objects.filter(reset_code=code).first()  # User 객체 조회
+        if not user or not user.check_reset_code(code):  # 인증 코드 검증
             return Response({"success": False, "message": "만료되었거나 잘못된 코드입니다."},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -325,7 +339,7 @@ class PregnancyViewSet(viewsets.ModelViewSet):
     #         {"message": "등록된 임신 정보가 없습니다."},
     #         status=status.HTTP_404_NOT_FOUND
     #     )
-    
+
 class KakaoLoginCallbackView(APIView):
     """
     카카오 소셜로그인 리다이렉트 방식:
@@ -338,7 +352,7 @@ class KakaoLoginCallbackView(APIView):
         code = request.GET.get('code', None)
         if not code:
             return Response({'error': '카카오 인증 code가 없습니다.'}, status=status.HTTP_400_BAD_REQUEST)
-    
+
         # code로 카카오 액세스 토큰 요청
         token_api_url = "https://kauth.kakao.com/oauth/token"
         data = {
@@ -366,10 +380,10 @@ class KakaoLoginCallbackView(APIView):
         kakao_user = profile_response.json()
         kakao_account = kakao_user.get('kakao_account', {})
         email = kakao_account.get('email', None)
-        
+
         if not email:
             return Response({'error': '카카오 이메일 정보가 없습니다.'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         try:
             # 기존 사용자 찾기
             user = User.objects.get(email=email)
@@ -379,24 +393,24 @@ class KakaoLoginCallbackView(APIView):
             name = kakao_account.get('profile', {}).get('nickname', '카카오 사용자')
             # 랜덤 비밀번호 생성 (실제 사용되지 않지만 필드는 채워야 함)
             temp_password = get_random_string(length=20)
-            
+
             user = User.objects.create_user(
                 username=username,
                 email=email,
                 name=name,
                 password=temp_password  # 실제로는 사용되지 않음
             )
-        
+
         # JWT 토큰 생성
         refresh = RefreshToken.for_user(user)
-        
+
         # 토큰에 사용자 정보 추가
         refresh['user_id'] = str(user.user_id)
         refresh['username'] = user.username
         refresh['name'] = user.name
         refresh['email'] = user.email
         refresh['is_pregnant'] = user.is_pregnant
-        
+
         # 액세스 토큰에도 정보 추가
         refresh.access_token['user_id'] = str(user.user_id)
         refresh.access_token['username'] = user.username
@@ -409,19 +423,19 @@ class KakaoLoginCallbackView(APIView):
         # FE_ENV=local 또는 FE_ENV=production으로 설정 가능
         fe_env = os.environ.get('FE_ENV', 'local')  # 기본값은 'local'
         django_env = os.environ.get('DJANGO_ENV', 'development')  # 기본값은 'development'
-        
+
         # 명시적인 FE_ENV 설정이 없으면 DJANGO_ENV를 기준으로 판단
         is_production = fe_env == 'production' or django_env == 'production'
-        
+
         # request.get_host()를 출력하여 디버깅에 도움이 되도록 함
         host = request.get_host()
         print(f"Current host: {host}, Environment: {'production' if is_production else 'local'}")
-        
+
         if is_production:
             frontend_redirect_uri = "https://florence-project-fe.vercel.app/kakao/callback"
         else:
             frontend_redirect_uri = "http://localhost:5173/kakao/callback"
-        
+
         print(f"Redirecting to: {frontend_redirect_uri}")
 
         # URL 파라미터로 토큰 전달
@@ -452,31 +466,31 @@ class NaverLoginCallbackView(APIView):
         print(f"요청 URL: {request.build_absolute_uri()}")
         print(f"요청 헤더: {dict(request.headers)}")
         print(f"요청 GET 파라미터: {dict(request.GET)}")
-        
+
         # 네이버에서 전달한 code와 state 추출
         code = request.GET.get('code', None)
         state = request.GET.get('state', None)
         print(f"네이버 인증 코드: {code}")
         print(f"네이버 상태 토큰: {state}")
-        
+
         if not code or not state:
             print("❌ 오류: 네이버 인증 code 또는 state가 없습니다.")
             return Response({'error': '네이버 인증 code 또는 state가 없습니다.'}, status=status.HTTP_400_BAD_REQUEST)
-    
+
         # code로 네이버 액세스 토큰 요청
         token_api_url = "https://nid.naver.com/oauth2.0/token"
-        
+
         # 환경 변수 확인 및 출력
         naver_client_id = os.getenv('NAVER_CLIENT_ID')
         naver_client_secret = os.getenv('NAVER_CLIENT_SECRET')
-        
+
         print(f"네이버 클라이언트 ID: {naver_client_id[:4]}..." if naver_client_id else "네이버 클라이언트 ID가 설정되지 않았습니다")
         print(f"네이버 클라이언트 시크릿: {naver_client_secret[:4]}..." if naver_client_secret else "네이버 클라이언트 시크릿이 설정되지 않았습니다")
-        
+
         if not naver_client_id or not naver_client_secret:
             print("❌ 오류: 네이버 API 키가 설정되지 않았습니다.")
             return Response({'error': '서버 구성 오류: 네이버 API 키가 설정되지 않았습니다.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
+
         data = {
             'grant_type': 'authorization_code',
             'client_id': naver_client_id,
@@ -488,18 +502,18 @@ class NaverLoginCallbackView(APIView):
         print(f"토큰 요청 데이터: {data}")
         print(f"네이버 클라이언트 ID: {naver_client_id}")
         print(f"네이버 클라이언트 시크릿: {naver_client_secret[:4]}...")  # 시크릿 일부만 표시
-        
+
         try:
             token_response = requests.post(token_api_url, data=data)
             print(f"토큰 응답 상태 코드: {token_response.status_code}")
             print(f"토큰 응답 내용: {token_response.text}")
-            
+
             try:
                 token_json = token_response.json()
             except Exception as json_error:
                 print(f"❌ JSON 파싱 오류: {str(json_error)}, 응답 내용: {token_response.text}")
                 return Response({'error': f'네이버 응답을 JSON으로 파싱할 수 없습니다: {str(json_error)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                
+
             if 'access_token' not in token_json:
                 print(f"❌ 오류: 네이버 액세스 토큰을 받지 못했습니다. 응답: {token_json}")
                 return Response({'error': '네이버 액세스 토큰을 받지 못했습니다.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -514,11 +528,11 @@ class NaverLoginCallbackView(APIView):
             }
             print(f"프로필 요청 URL: {profile_api_url}")
             print(f"프로필 요청 헤더: {headers}")
-            
+
             profile_response = requests.get(profile_api_url, headers=headers)
             print(f"프로필 응답 상태 코드: {profile_response.status_code}")
             print(f"프로필 응답 내용: {profile_response.text}")
-            
+
             if profile_response.status_code != 200:
                 print("❌ 오류: 네이버 사용자 정보를 가져오지 못했습니다.")
                 return Response({'error': '네이버 사용자 정보를 가져오지 못했습니다.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -532,16 +546,16 @@ class NaverLoginCallbackView(APIView):
             if profile_data.get('resultcode') != '00' or 'response' not in profile_data:
                 print(f"❌ 오류: 네이버 사용자 정보가 유효하지 않습니다. 응답: {profile_data}")
                 return Response({'error': '네이버 사용자 정보가 유효하지 않습니다.'}, status=status.HTTP_400_BAD_REQUEST)
-                
+
             naver_account = profile_data.get('response', {})
             email = naver_account.get('email')
             print(f"네이버 사용자 정보: {naver_account}")
             print(f"이메일: {email}")
-            
+
             if not email:
                 print("❌ 오류: 네이버 이메일 정보가 없습니다.")
                 return Response({'error': '네이버 이메일 정보가 없습니다.'}, status=status.HTTP_400_BAD_REQUEST)
-            
+
             # 사용자 생성 또는 조회
             try:
                 # 기존 사용자 찾기
@@ -553,7 +567,7 @@ class NaverLoginCallbackView(APIView):
                 name = naver_account.get('name', '네이버 사용자')
                 # 랜덤 비밀번호 생성 (실제 사용되지 않지만 필드는 채워야 함)
                 temp_password = get_random_string(length=20)
-                
+
                 print(f"✅ 새 사용자를 생성합니다: {email}, {name}")
                 user = User.objects.create_user(
                     username=username,
@@ -562,24 +576,24 @@ class NaverLoginCallbackView(APIView):
                     password=temp_password  # 실제로는 사용되지 않음
                 )
                 print(f"✅ 새 사용자가 생성되었습니다: {user.email}, {user.name}")
-            
+
             # JWT 토큰 생성
             refresh = RefreshToken.for_user(user)
-            
+
             # 토큰에 사용자 정보 추가
             refresh['user_id'] = str(user.user_id)
             refresh['username'] = user.username
             refresh['name'] = user.name
             refresh['email'] = user.email
             refresh['is_pregnant'] = user.is_pregnant
-            
+
             # 액세스 토큰에도 정보 추가
             refresh.access_token['user_id'] = str(user.user_id)
             refresh.access_token['username'] = user.username
             refresh.access_token['name'] = user.name
             refresh.access_token['email'] = user.email
             refresh.access_token['is_pregnant'] = user.is_pregnant
-            
+
             print(f"✅ JWT 토큰이 생성되었습니다.")
 
             # 환경에 따라 적절한 프론트엔드 콜백 URL 사용
@@ -587,21 +601,21 @@ class NaverLoginCallbackView(APIView):
             # FE_ENV=local 또는 FE_ENV=production으로 설정 가능
             fe_env = os.environ.get('FE_ENV', 'local')  # 기본값은 'local'
             django_env = os.environ.get('DJANGO_ENV', 'development')  # 기본값은 'development'
-            
+
             # 명시적인 FE_ENV 설정이 없으면 DJANGO_ENV를 기준으로 판단
             is_production = fe_env == 'production' or django_env == 'production'
-            
+
             # request.get_host()를 출력하여 디버깅에 도움이 되도록 함
             host = request.get_host()
             print(f"Current host: {host}, Environment: {'production' if is_production else 'local'}")
-            
+
             if is_production:
                 frontend_redirect_uri = "https://florence-project-fe.vercel.app/naver/callback"
             else:
                 frontend_redirect_uri = "http://localhost:5173/naver/callback"
-            
+
             print(f"리디렉션 URL: {frontend_redirect_uri}")
-                
+
             params = {
                 'token': str(refresh.access_token),
                 'refresh': str(refresh),
@@ -609,16 +623,16 @@ class NaverLoginCallbackView(APIView):
                 'name': user.name,
                 'is_pregnant': str(user.is_pregnant).lower()  # 불리언을 문자열로 변환
             }
-            
+
             # 파라미터를 URL에 추가
             query_string = "&".join([f"{key}={value}" for key, value in params.items()])
             redirect_url = f"{frontend_redirect_uri}?{query_string}"
-            
+
             print(f"최종 리디렉션 URL: {redirect_url[:100]}...")
             print("토큰 정보: ", params['token'][:20], "...")
             print("사용자 ID: ", params['user_id'])
             print("======= 네이버 로그인 콜백 종료 =======\n")
-            
+
             # HttpResponseRedirect로 프론트엔드 페이지로 리디렉션
             return HttpResponseRedirect(redirect_url)
         except Exception as e:
@@ -640,39 +654,39 @@ class GoogleLoginCallbackView(APIView):
         print(f"요청 URL: {request.build_absolute_uri()}")
         print(f"요청 헤더: {dict(request.headers)}")
         print(f"요청 GET 파라미터: {dict(request.GET)}")
-        
+
         # 구글에서 전달한 code 추출
         code = request.GET.get('code', None)
-        
+
         print(f"구글 인증 코드: {code}")
-        
+
         if not code:
             print("❌ 오류: 구글 인증 code가 없습니다.")
             # 프론트엔드로 에러 리다이렉션
             frontend_redirect_uri = "http://localhost:5173/google/callback"
             redirect_url = f"{frontend_redirect_uri}?error=인증_코드_없음"
             return HttpResponseRedirect(redirect_url)
-    
+
         # code로 구글 액세스 토큰 요청
         token_api_url = "https://oauth2.googleapis.com/token"
-        
+
         # 환경 변수 확인 및 출력
         google_client_id = os.getenv('GOOGLE_CLIENT_ID')
         google_client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
-        
+
         print(f"구글 클라이언트 ID: {google_client_id[:10]}..." if google_client_id else "구글 클라이언트 ID가 설정되지 않았습니다")
         print(f"구글 클라이언트 시크릿: {google_client_secret[:4]}..." if google_client_secret else "구글 클라이언트 시크릿이 설정되지 않았습니다")
-        
+
         if not google_client_id or not google_client_secret:
             print("❌ 오류: 구글 API 키가 설정되지 않았습니다.")
             # 프론트엔드로 에러 리다이렉션
             frontend_redirect_uri = "http://localhost:5173/google/callback"
             redirect_url = f"{frontend_redirect_uri}?error=API_키_설정_없음"
             return HttpResponseRedirect(redirect_url)
-        
+
         # 리디렉션 URI 설정 - 백엔드 콜백 URL
         redirect_uri = f"http://127.0.0.1:8000/v1/accounts/google/callback"
-        
+
         data = {
             'grant_type': 'authorization_code',
             'client_id': google_client_id,
@@ -682,12 +696,12 @@ class GoogleLoginCallbackView(APIView):
         }
         print(f"토큰 요청 URL: {token_api_url}")
         print(f"토큰 요청 데이터: {data}")
-        
+
         try:
             token_response = requests.post(token_api_url, data=data)
             print(f"토큰 응답 상태 코드: {token_response.status_code}")
             print(f"토큰 응답 내용: {token_response.text}")
-            
+
             try:
                 token_json = token_response.json()
             except Exception as json_error:
@@ -696,7 +710,7 @@ class GoogleLoginCallbackView(APIView):
                 frontend_redirect_uri = "http://localhost:5173/google/callback"
                 redirect_url = f"{frontend_redirect_uri}?error=JSON_파싱_오류"
                 return HttpResponseRedirect(redirect_url)
-                
+
             if 'access_token' not in token_json:
                 print(f"❌ 오류: 구글 액세스 토큰을 받지 못했습니다. 응답: {token_json}")
                 # 프론트엔드로 에러 리다이렉션
@@ -714,11 +728,11 @@ class GoogleLoginCallbackView(APIView):
             }
             print(f"프로필 요청 URL: {profile_api_url}")
             print(f"프로필 요청 헤더: {headers}")
-            
+
             profile_response = requests.get(profile_api_url, headers=headers)
             print(f"프로필 응답 상태 코드: {profile_response.status_code}")
             print(f"프로필 응답 내용: {profile_response.text}")
-            
+
             if profile_response.status_code != 200:
                 print("❌ 오류: 구글 사용자 정보를 가져오지 못했습니다.")
                 # 프론트엔드로 에러 리다이렉션
@@ -739,14 +753,14 @@ class GoogleLoginCallbackView(APIView):
             email = profile_data.get('email')
             print(f"구글 사용자 정보: {profile_data}")
             print(f"이메일: {email}")
-            
+
             if not email:
                 print("❌ 오류: 구글 이메일 정보가 없습니다.")
                 # 프론트엔드로 에러 리다이렉션
                 frontend_redirect_uri = "http://localhost:5173/google/callback"
                 redirect_url = f"{frontend_redirect_uri}?error=이메일_정보_없음"
                 return HttpResponseRedirect(redirect_url)
-            
+
             # 사용자 생성 또는 조회
             try:
                 # 기존 사용자 찾기
@@ -758,7 +772,7 @@ class GoogleLoginCallbackView(APIView):
                 name = profile_data.get('name', '구글 사용자')
                 # 랜덤 비밀번호 생성 (실제 사용되지 않지만 필드는 채워야 함)
                 temp_password = get_random_string(length=20)
-                
+
                 print(f"✅ 새 사용자를 생성합니다: {email}, {name}")
                 user = User.objects.create_user(
                     username=username,
@@ -767,44 +781,44 @@ class GoogleLoginCallbackView(APIView):
                     password=temp_password  # 실제로는 사용되지 않음
                 )
                 print(f"✅ 새 사용자가 생성되었습니다: {user.email}, {user.name}")
-            
+
             # JWT 토큰 생성
             refresh = RefreshToken.for_user(user)
-            
+
             # 토큰에 사용자 정보 추가
             refresh['user_id'] = str(user.user_id)
             refresh['username'] = user.username
             refresh['name'] = user.name
             refresh['email'] = user.email
             refresh['is_pregnant'] = user.is_pregnant
-            
+
             # 액세스 토큰에도 정보 추가
             refresh.access_token['user_id'] = str(user.user_id)
             refresh.access_token['username'] = user.username
             refresh.access_token['name'] = user.name
             refresh.access_token['email'] = user.email
             refresh.access_token['is_pregnant'] = user.is_pregnant
-            
+
             print(f"✅ JWT 토큰이 생성되었습니다.")
 
             # 환경에 따라 적절한 프론트엔드 콜백 URL 사용
             fe_env = os.environ.get('FE_ENV', 'local')  # 기본값은 'local'
             django_env = os.environ.get('DJANGO_ENV', 'development')  # 기본값은 'development'
-            
+
             # 명시적인 FE_ENV 설정이 없으면 DJANGO_ENV를 기준으로 판단
             is_production = fe_env == 'production' or django_env == 'production'
-            
+
             # request.get_host()를 출력하여 디버깅에 도움이 되도록 함
             host = request.get_host()
             print(f"Current host: {host}, Environment: {'production' if is_production else 'local'}")
-            
+
             if is_production:
                 frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
             else:
                 frontend_redirect_uri = "http://localhost:5173/google/callback"
-            
+
             print(f"리디렉션 URL: {frontend_redirect_uri}")
-                
+
             params = {
                 'token': str(refresh.access_token),
                 'refresh': str(refresh),
@@ -813,27 +827,38 @@ class GoogleLoginCallbackView(APIView):
                 'is_pregnant': str(user.is_pregnant).lower(),  # 불리언을 문자열로 변환
                 'debug_info': f"host_{host}_time_{str(datetime.now())}"  # 디버깅용 추가 정보
             }
-            
+
             # 파라미터를 URL에 추가
             query_string = "&".join([f"{key}={value}" for key, value in params.items()])
             redirect_url = f"{frontend_redirect_uri}?{query_string}"
-            
+
             print(f"최종 리디렉션 URL: {redirect_url[:100]}...")
             print("토큰 정보: ", params['token'][:20], "...")
             print("사용자 ID: ", params['user_id'])
             print("======= 구글 로그인 콜백 종료 =======\n")
-            
+
             # HttpResponseRedirect로 프론트엔드 페이지로 리디렉션
             return HttpResponseRedirect(redirect_url)
         except Exception as e:
             print(f"❌ 예외 발생: {str(e)}")
             import traceback
             print(traceback.format_exc())
-            
+
             # 프론트엔드로 에러 리다이렉션
             frontend_redirect_uri = "http://localhost:5173/google/callback"
             redirect_url = f"{frontend_redirect_uri}?error=처리_중_오류_발생"
             return HttpResponseRedirect(redirect_url)
 
-# class FindUsernameView(generics.GenericAPIView):
-#     """ 아이디 찾기 """
+class FindUsernameAPIView(GenericAPIView):
+    """ 일반 로그인 사용자 아이디 찾기"""
+    permission_classes = [permissions.AllowAny]  # 인증 없이 사용 가능
+
+    serializer_class = FindUsernameSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+
+        if serializer.is_valid():
+            return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
