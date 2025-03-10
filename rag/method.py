@@ -9,6 +9,7 @@ from langchain.schema import Document
 from dotenv import load_dotenv
 import json
 import logging
+import pandas as pd
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -170,255 +171,153 @@ class SimpleRAG:
         logger.info(f"경로 변환: {path} -> {result}")
         return result
     
+    def process_file(self, file_path):
+        """파일을 처리하여 문서로 변환"""
+        # CSV 파일 특별 처리
+        if file_path.endswith('.csv'):
+            import pandas as pd
+            
+            # CSV 파일 로드
+            df = pd.read_csv(file_path)
+            documents = []
+            
+            logger.info(f"CSV 파일 처리 시작: {file_path}, 컬럼: {df.columns.tolist()}")
+            
+            # 각 행을 문서로 변환
+            for idx, row in df.iterrows():
+                # 임신 주차 확인 (여러 가능한 컬럼명 시도)
+                pregnancy_week = None
+                pregnancy_week_columns = ['임신주차', '임신 주차', '주차', 'week', 'pregnancy_week']
+                
+                for col in pregnancy_week_columns:
+                    if col in df.columns:
+                        try:
+                            value = row[col]
+                            if pd.notna(value):  # NaN이 아닌 경우만 처리
+                                # 문자열인 경우 정수로 변환 시도
+                                if isinstance(value, str):
+                                    # 숫자만 추출 (예: "8주차" -> "8")
+                                    import re
+                                    num_match = re.search(r'(\d+)', value)
+                                    if num_match:
+                                        pregnancy_week = int(num_match.group(1))
+                                else:
+                                    pregnancy_week = int(value)
+                                break
+                        except:
+                            continue
+                
+                # 첫 번째 컬럼이 숫자이고 임신주차를 찾지 못한 경우, 첫 번째 컬럼을 임신주차로 가정
+                if pregnancy_week is None and len(df.columns) > 0:
+                    first_col = df.columns[0]
+                    try:
+                        value = row[first_col]
+                        if pd.notna(value):
+                            if isinstance(value, str):
+                                import re
+                                num_match = re.search(r'(\d+)', value)
+                                if num_match:
+                                    pregnancy_week = int(num_match.group(1))
+                            else:
+                                pregnancy_week = int(value)
+                    except:
+                        pass
+                
+                logger.info(f"행 {idx} 처리: 임신주차={pregnancy_week}")
+                        
+                # 콘텐츠 생성 - 임신 주차를 첫 줄에 명확히 표시
+                if pregnancy_week is not None:
+                    content = f"임신주차: {pregnancy_week}\n"
+                    content += "\n".join([f"{col}: {val}" for col, val in row.items() if pd.notna(val) and col != '임신주차'])
+                else:
+                    content = "\n".join([f"{col}: {val}" for col, val in row.items() if pd.notna(val)])
+                    
+                # 메타데이터에 임신 주차 정보 추가
+                metadata = {
+                    "source": file_path,
+                    "row": idx
+                }
+                
+                # 임신 주차 정보가 있으면 메타데이터에 추가 (다양한 키로 저장)
+                if pregnancy_week is not None:
+                    metadata["pregnancy_week"] = pregnancy_week
+                    metadata["임신주차"] = pregnancy_week
+                    metadata["week"] = pregnancy_week
+                    metadata["주차"] = pregnancy_week
+                    
+                documents.append(Document(page_content=content, metadata=metadata))
+            
+            logger.info(f"CSV 파일 처리 완료: {file_path}, {len(documents)}개 문서 생성")
+            return documents
+        
+        # 다른 파일 형식 처리 코드...
+
     @staticmethod
-    def process_file(file_path: str):
+    def search_by_pregnancy_week(query: str, pregnancy_week: int, k: int = 3):
         """
-        파일을 처리하여 벡터 DB에 저장합니다.
+        임신 주차를 기준으로 관련 정보를 검색합니다.
         
         Args:
-            file_path: 처리할 파일 경로
+            query: 검색 쿼리
+            pregnancy_week: 임신 주차
+            k: 반환할 문서 수
             
         Returns:
-            성공 여부(True/False)
+            관련 문서 목록
         """
-        print(f"파일 처리 중: {file_path}")
-        
-        # 파일 확장자 확인
-        file_ext = os.path.splitext(file_path)[1].lower()
-        
-        # 파일 유형에 따라 적절한 로더 사용
-        if file_ext == '.csv':
-            # 1. CSV 파일 로드
-            # CSVLoader는 csv 파일의 각 행을 별도의 문서(Document)로 변환합니다
-            loader = CSVLoader(file_path=file_path)
-            documents = loader.load()
-            print(f"CSV 문서 로드 완료: {len(documents)}개 행")
-        elif file_ext == '.txt':
-            # 1. TXT 파일 로드
-            # TextLoader는 텍스트 파일을 하나의 문서로 로드합니다
-            loader = TextLoader(file_path=file_path, encoding='utf-8')
-            documents = loader.load()
-            print(f"TXT 문서 로드 완료: {len(documents)}개 문서")
-        elif file_ext == '.json' or file_ext == '.jsonl':
-            # JSON 또는 JSONL 파일 로드
-            try:
-                # 파일이 jsonlines 형식인지 확인
-                is_jsonlines = file_ext == '.jsonl'
-                
-                if is_jsonlines:
-                    # JSONL 파일 처리
-                    try:
-                        # 각 라인을 개별적으로 읽어서 처리
-                        json_lines = []
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            for line in f:
-                                if line.strip():
-                                    try:
-                                        item = json.loads(line)
-                                        json_lines.append(item)
-                                    except Exception as e:
-                                        logger.warning(f"JSONL 라인 파싱 오류: {str(e)}")
-                        
-                        if not json_lines:
-                            logger.error("유효한 JSON 객체를 포함한 라인이 없습니다.")
-                            return False
-                        
-                        # 첫 번째 객체에서 텍스트 필드 찾기
-                        sample_obj = json_lines[0]
-                        text_fields = SimpleRAG._find_text_fields(sample_obj)
-                        
-                        if text_fields:
-                            # 가장 긴 텍스트 필드 선택
-                            best_path = max(text_fields.items(), key=lambda x: x[1])[0]
-                            content_key = best_path.split('.')[-1]  # 경로에서 실제 키 추출
-                            
-                            # jq 호환 형식으로 경로 변환
-                            jq_best_path = SimpleRAG._path_to_jq_schema(best_path)
-                            
-                            # 메타데이터로 사용할 필드 결정 (긴 텍스트 필드 제외)
-                            def metadata_func(record, metadata):
-                                extra_meta = SimpleRAG._extract_metadata(record, [best_path])
-                                return {**metadata, **extra_meta}
-                            
-                            # JSONLoader 생성
-                            loader = JSONLoader(
-                                file_path=file_path,
-                                jq_schema=jq_best_path,  # 변환된 경로 사용
-                                text_content=False,  # 전체 콘텐츠 사용
-                                json_lines=True,
-                                metadata_func=metadata_func
-                            )
-                        else:
-                            # 텍스트 필드가 없으면 전체 객체를 JSON으로 변환
-                            loader = JSONLoader(
-                                file_path=file_path,
-                                jq_schema='.',
-                                text_content=False,
-                                json_lines=True
-                            )
-                    except Exception as e:
-                        logger.error(f"JSONL 파일 처리 중 오류: {str(e)}")
-                        return False
-                else:
-                    # 일반 JSON 파일 처리
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            json_data = json.load(f)
-                        
-                        # JSON 구조에서 텍스트 필드 찾기
-                        text_fields = SimpleRAG._find_text_fields(json_data)
-                        
-                        if not text_fields:
-                            # 텍스트 필드가 없는 경우 전체 JSON을 텍스트로 변환
-                            logger.info("적절한 텍스트 필드를 찾지 못했습니다. 전체 JSON을 사용합니다.")
-                            content = json.dumps(json_data, ensure_ascii=False)
-                            documents = [Document(page_content=content, metadata={"source": file_path})]
-                            print(f"JSON 문서 직접 변환 완료: {len(documents)}개 문서")
-                            
-                            # 이미 documents를 생성했으므로 loader를 가상으로 설정
-                            class DummyLoader:
-                                def load(self):
-                                    return documents
-                            
-                            loader = DummyLoader()
-                        else:
-                            # 가장 긴 텍스트 필드 선택
-                            best_path = max(text_fields.items(), key=lambda x: x[1])[0]
-                            print(f"가장 긴 텍스트 필드 경로: {best_path}")
-                            
-                            # jq 호환 형식으로 경로 변환
-                            jq_best_path = SimpleRAG._path_to_jq_schema(best_path)
-                            
-                            # 배열 처리가 필요한지 확인
-                            if '[]' in best_path or '[0]' in best_path:
-                                # 배열 형태의 JSON 처리
-                                # [0]을 []로 변경하여 모든 요소 처리
-                                jq_path = jq_best_path.replace('[0]', '[]')
-                                
-                                # 메타데이터 추출 설정
-                                def metadata_func(record, metadata):
-                                    # record는 jq_schema에 의해 추출된 객체
-                                    extra_meta = {}
-                                    if isinstance(record, dict):
-                                        extra_meta = SimpleRAG._extract_metadata(record, [best_path])
-                                    return {**metadata, **extra_meta}
-                                
-                                loader = JSONLoader(
-                                    file_path=file_path,
-                                    jq_schema=jq_path,
-                                    text_content=False,
-                                    metadata_func=metadata_func
-                                )
-                            else:
-                                # 단일 필드 추출
-                                # 메타데이터 생성 함수
-                                def metadata_func(record, metadata):
-                                    extra_meta = SimpleRAG._extract_metadata(json_data, [best_path])
-                                    return {**metadata, **extra_meta}
-                                
-                                # jq_schema 설정
-                                loader = JSONLoader(
-                                    file_path=file_path,
-                                    jq_schema=jq_best_path,  # 변환된 경로 사용
-                                    text_content=False,
-                                    metadata_func=metadata_func
-                                )
-                    except Exception as e:
-                        logger.error(f"JSON 파일 처리 중 오류: {str(e)}")
-                        return False
-                
-                # 문서 로드
-                documents = loader.load()
-                print(f"JSON 문서 로드 완료: {len(documents)}개 문서")
-                
-            except Exception as e:
-                logger.error(f"JSON 파일 처리 중 오류 발생: {str(e)}")
-                return False
-        else:
-            print(f"지원하지 않는 파일 형식: {file_ext}")
-            return False
-        
-        # 2. 문서 분할
-        # 긴 문서를 청크(chunk)로 나누어 임베딩하기 좋게 만듭니다
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,  # 각 청크의 최대 글자 수
-            chunk_overlap=200,  # 청크 간 중복 글자 수
-        )
-        splits = text_splitter.split_documents(documents)
-        print(f"문서 분할 완료: {len(splits)}개 청크")
-        
-        # 3. 청크에서 텍스트와 메타데이터 추출
-        texts = [doc.page_content for doc in splits]
-        metadatas = [doc.metadata for doc in splits]
-        
-        # 4. OpenAI 임베딩 모델 설정
-        embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-        
-        # 5. Chroma DB 업데이트 또는 생성
-        if os.path.exists(SimpleRAG.DB_DIR):
-            print("기존 Chroma DB 업데이트 중...")
-            logger.info(f"기존 Chroma DB 경로: {SimpleRAG.DB_DIR}")
-            # 기존 DB가 있으면 로드해서 업데이트
+        try:
+            # OpenAI 임베딩 모델 설정
+            embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+            
+            # Chroma DB 로드
             vectorstore = Chroma(
                 persist_directory=SimpleRAG.DB_DIR,
                 embedding_function=embeddings,
                 collection_name="korean_dialogue"
             )
-            # 새 텍스트 추가
-            logger.info(f"Chroma DB에 {len(texts)}개 텍스트 추가 중...")
-            vectorstore.add_texts(texts=texts, metadatas=metadatas)
-        else:
-            print("새로운 Chroma DB 생성 중...")
-            logger.info(f"새 Chroma DB 경로: {SimpleRAG.DB_DIR}")
-            # 새 DB 생성
+            
+            # 1. 임신 주차로 필터링된 검색 시도
+            filter_dict = {"pregnancy_week": pregnancy_week}
             try:
-                logger.info("Chroma.from_texts() 호출 시작...")
-                vectorstore = Chroma.from_texts(
-                    texts=texts,
-                    embedding_function=embeddings,
-                    metadatas=metadatas,
-                    persist_directory=SimpleRAG.DB_DIR,
-                    collection_name="korean_dialogue"
+                # 임신 주차로 필터링하여 검색
+                results = vectorstore.similarity_search(
+                    query, 
+                    k=k,
+                    filter=filter_dict
                 )
-                logger.info("Chroma.from_texts() 호출 성공")
+                
+                # 결과가 있으면 반환
+                if results:
+                    logger.info(f"임신 {pregnancy_week}주차로 필터링된 검색 결과: {len(results)}개")
+                    return results
             except Exception as e:
-                logger.error(f"Chroma DB 생성 중 오류: {str(e)}")
-                # 매개변수 이름이 'embedding'일 경우 다시 시도
-                try:
-                    logger.info("매개변수 'embedding'으로 다시 시도...")
-                    vectorstore = Chroma.from_texts(
-                        texts=texts,
-                        embedding=embeddings,
-                        metadatas=metadatas,
-                        persist_directory=SimpleRAG.DB_DIR,
-                        collection_name="korean_dialogue"
-                    )
-                    logger.info("Chroma.from_texts() 두 번째 시도 성공")
-                except Exception as e2:
-                    logger.error(f"두 번째 시도 중 오류: {str(e2)}")
-                    return False
-        
-        # 6. 변경사항 저장
-        try:
-            logger.info(f"Chroma DB 저장 디렉토리 생성: {SimpleRAG.DB_DIR}")
-            os.makedirs(SimpleRAG.DB_DIR, exist_ok=True)
+                logger.warning(f"임신 주차 필터링 검색 오류: {str(e)}")
             
-            # DB 디렉토리 권한 확인
-            if not os.access(SimpleRAG.DB_DIR, os.W_OK):
-                logger.error(f"Chroma DB 디렉토리에 쓰기 권한 없음: {SimpleRAG.DB_DIR}")
-                raise PermissionError(f"디렉토리에 쓰기 권한 없음: {SimpleRAG.DB_DIR}")
+            # 2. 쿼리 확장 방식 시도
+            expanded_query = f"임신 {pregnancy_week}주차 {query}"
+            logger.info(f"확장된 쿼리: {expanded_query}")
             
-            # 최신 버전의 langchain-chroma에서는 persist() 메서드가 필요하지 않음
-            # 변경사항은 자동으로 저장됨
-            logger.info("Chroma DB가 자동으로 저장됩니다. persist() 메서드는 더 이상 필요하지 않습니다.")
+            # 확장된 쿼리로 검색
+            results = vectorstore.similarity_search(expanded_query, k=k)
             
-            # 저장 후 DB 폴더 내용 확인
-            db_files = os.listdir(SimpleRAG.DB_DIR)
-            logger.info(f"Chroma DB 저장 후 파일/폴더 목록: {db_files}")
+            # 3. 결과 후처리: 임신 주차와 가까운 순으로 정렬
+            if results:
+                # 메타데이터에 임신 주차 정보가 있는 경우 주차 차이에 따라 정렬
+                def get_week_difference(doc):
+                    doc_week = doc.metadata.get('pregnancy_week')
+                    if doc_week is not None:
+                        return abs(doc_week - pregnancy_week)
+                    return 100  # 임신 주차 정보가 없는 경우 높은 값 반환
+                
+                # 임신 주차 차이가 적은 순으로 정렬
+                results.sort(key=get_week_difference)
+                
+                # 상위 k개 결과만 반환
+                return results[:k]
             
-            print("Chroma DB 저장 완료")
-            return True
+            return results
             
         except Exception as e:
-            logger.error(f"Chroma DB 저장 중 오류 발생: {str(e)}")
-            return False
+            logger.error(f"임신 주차 기반 검색 중 오류: {str(e)}")
+            # 오류 발생 시 빈 결과 반환
+            return []

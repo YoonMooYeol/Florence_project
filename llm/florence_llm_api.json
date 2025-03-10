@@ -1,0 +1,382 @@
+{
+    "info": {
+        "_postman_id": "8a1e9cf0-9f2d-490e-b98e-dc2b7a3f1e66",
+        "name": "Florence LLM API",
+        "description": "플로렌스 프로젝트의 LLM 관련 API 모음입니다.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "LLM 대화",
+            "item": [
+                {
+                    "name": "LLM 질문하기",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"user_id\": \"사용자_ID\",\n    \"query_text\": \"임신 중에 커피를 마셔도 될까요?\",\n    \"preferences\": {},\n    \"pregnancy_week\": 8\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/v1/llm/",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "llm",
+                                ""
+                            ]
+                        },
+                        "description": "LLM에게 질문하여 응답을 받는 API입니다."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "임신 주차 검색",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"query_text\": \"임신 8주차에 좋은 음식\",\n    \"pregnancy_week\": 8\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/v1/llm/pregnancy-search/",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "llm",
+                                "pregnancy-search",
+                                ""
+                            ]
+                        },
+                        "description": "임신 주차에 맞는 정보를 검색하는 API입니다."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "LLM과의 직접 대화 관련 API"
+        },
+        {
+            "name": "대화 기록",
+            "item": [
+                {
+                    "name": "대화 목록 조회",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/v1/llm/conversations/?user_id=사용자_ID",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "llm",
+                                "conversations",
+                                ""
+                            ],
+                            "query": [
+                                {
+                                    "key": "user_id",
+                                    "value": "사용자_ID"
+                                }
+                            ]
+                        },
+                        "description": "사용자의 LLM 대화 기록을 조회합니다."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "대화 수정",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"user_id\": \"사용자_ID\",\n    \"query\": \"수정된 질문 내용\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/v1/llm/conversations/edit/?conversation_id=대화_ID",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "llm",
+                                "conversations",
+                                "edit",
+                                ""
+                            ],
+                            "query": [
+                                {
+                                    "key": "conversation_id",
+                                    "value": "대화_ID"
+                                }
+                            ]
+                        },
+                        "description": "사용자의 대화 내용을 수정합니다. (주의: conversation_id는 URL 쿼리 파라미터로 전달)"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "대화 삭제",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"user_id\": \"사용자_ID\",\n    \"delete_mode\": \"all\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/v1/llm/conversations/delete/?conversation_id=대화_ID",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "llm",
+                                "conversations",
+                                "delete",
+                                ""
+                            ],
+                            "query": [
+                                {
+                                    "key": "conversation_id",
+                                    "value": "대화_ID"
+                                }
+                            ]
+                        },
+                        "description": "사용자의 대화 내용을 삭제합니다. delete_mode는 'all' 또는 'query_only'로 설정할 수 있습니다. (주의: conversation_id는 URL 쿼리 파라미터로 전달)"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "특정 대화 조회",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/v1/llm/conversations/대화_ID/",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "llm",
+                                "conversations",
+                                "대화_ID",
+                                ""
+                            ]
+                        },
+                        "description": "특정 ID의 대화 내용을 조회합니다."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "LLM과의 대화 기록 관리 API"
+        },
+        {
+            "name": "채팅방",
+            "item": [
+                {
+                    "name": "채팅방 목록 조회",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/v1/llm/chat/rooms/?user_id=사용자_ID",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "llm",
+                                "chat",
+                                "rooms",
+                                ""
+                            ],
+                            "query": [
+                                {
+                                    "key": "user_id",
+                                    "value": "사용자_ID"
+                                }
+                            ]
+                        },
+                        "description": "사용자의 채팅방 목록을 조회합니다."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "채팅방 생성",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"user_id\": \"사용자_ID\",\n    \"pregnancy_id\": \"임신_ID\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/v1/llm/chat/rooms/",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "llm",
+                                "chat",
+                                "rooms",
+                                ""
+                            ]
+                        },
+                        "description": "새로운 채팅방을 생성합니다."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "채팅방 상세 조회",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/v1/llm/chat/rooms/채팅방_ID/?include_messages=true",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "llm",
+                                "chat",
+                                "rooms",
+                                "채팅방_ID",
+                                ""
+                            ],
+                            "query": [
+                                {
+                                    "key": "include_messages",
+                                    "value": "true"
+                                }
+                            ]
+                        },
+                        "description": "특정 채팅방의 상세 정보와 메시지를 조회합니다."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "채팅방 메시지 생성",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"query\": \"채팅방에서 LLM에게 보내는 메시지입니다.\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/v1/llm/chat/rooms/채팅방_ID/messages/",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "llm",
+                                "chat",
+                                "rooms",
+                                "채팅방_ID",
+                                "messages",
+                                ""
+                            ]
+                        },
+                        "description": "채팅방에서 LLM과 대화합니다."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "채팅방 요약",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/v1/llm/chat/rooms/채팅방_ID/summarize/",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "llm",
+                                "chat",
+                                "rooms",
+                                "채팅방_ID",
+                                "summarize",
+                                ""
+                            ]
+                        },
+                        "description": "LLM을 사용하여 채팅방의 모든 대화 내용(사용자 질문과 LLM 답변)을 읽고 50자 이내로 핵심 주제를 요약합니다."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "채팅방 관리 및 대화 API"
+        }
+    ],
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000",
+            "type": "string"
+        }
+    ]
+}
