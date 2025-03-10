@@ -27,7 +27,7 @@ from django.core.mail import EmailMessage, get_connection
 
 from .serializers import(
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
-    PasswordResetSerializer, PasswordResetCheckSerializer, FindUsernameSerializer
+    PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer
 )
 from .models import User, Pregnancy
 from dotenv import load_dotenv
@@ -190,25 +190,39 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
 
 class PasswordResetConfirmViewSet(viewsets.GenericViewSet):
     """ 비밀번호 재설정 완료 뷰셋 """
+    permission_classes = [AllowAny]
+    serializer_class = PasswordResetConfirmSerializer
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        reset_code = serializer.validated_data['code']
-        new_password = serializer.validated_data['new_password']
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            reset_code = serializer.validated_data['reset_code']
+            new_password = serializer.validated_data['new_password']
 
-        # 코드로 사용자 탐색
-        user = User.objects.get(reset_code=reset_code)
-        if not user or not user.check_reset_code(reset_code):
-            return Response({"success": False, "message": "만료되었거나 잘못된 코드입니다."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # 코드로 사용자 탐색
+            user = User.objects.filter(reset_code=reset_code).first()  # 필터로 사용자 찾기
+            if not user:
+                return Response({"success": False, "message": "잘못된 인증 코드입니다."},
+                                status=status.HTTP_400_BAD_REQUEST)
 
-        # 새 비밀번호 설정
-        user.set_password(new_password)
-        user.clear_reset_code()
+            # 인증 코드 만료 여부 확인
+            if not user.check_reset_code(reset_code):
+                return Response({"success": False, "message": "인증 코드가 만료되었습니다."},
+                                status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"success": True, "message": "비밀번호가 성공적으로 재설정되었습니다."},
-                        status=status.HTTP_200_OK)
+            # 새 비밀번호 설정
+            user.set_password(new_password)
+            user.clear_reset_code()  # 인증 코드 초기화
+
+            return Response({"success": True, "message": "비밀번호가 성공적으로 재설정되었습니다."},
+                            status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # 예외 메시지 로그 출력
+            logger.error(f"서버 오류 발생: {str(e)}")
+            return Response({"success": False, "message": f"서버 오류: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class PasswordResetCheckViewSet(viewsets.GenericViewSet):
     """ 비밀번호 재설정 코드 확인 뷰셋 """
@@ -218,11 +232,11 @@ class PasswordResetCheckViewSet(viewsets.GenericViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        code = serializer.validated_data['code']
+        code = serializer.validated_data['reset_code']  # 'reset_code'로 수정
 
         # 코드로 사용자 탐색
-        user = User.objects.get(reset_code=code)
-        if not user or not user.check_reset_code(code):
+        user = User.objects.filter(reset_code=code).first()  # User 객체 조회
+        if not user or not user.check_reset_code(code):  # 인증 코드 검증
             return Response({"success": False, "message": "만료되었거나 잘못된 코드입니다."},
                             status=status.HTTP_400_BAD_REQUEST)
 
