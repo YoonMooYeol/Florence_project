@@ -111,4 +111,21 @@ class ChatRoomSummarizeSerializer(serializers.Serializer):
     is_updated = serializers.BooleanField(read_only=True)
     
     class Meta:
-        fields = ['topic', 'message_count', 'is_updated'] 
+        fields = ['topic', 'message_count', 'is_updated']
+
+class LLMAgentQuerySerializer(serializers.Serializer):
+    """LLM 에이전트 질문 시리얼라이저"""
+    user_id = serializers.CharField(required=True)
+    query_text = serializers.CharField(required=True)
+    
+    class Meta:
+        fields = ['user_id', 'query_text']
+
+class LLMAgentResponseSerializer(serializers.Serializer):
+    """LLM 에이전트 응답 시리얼라이저"""
+    response = serializers.CharField()
+    search_results = serializers.ListField(required=False, default=list)
+    search_queries = serializers.ListField(required=False, default=list)
+    
+    class Meta:
+        fields = ['response', 'search_results', 'search_queries'] 

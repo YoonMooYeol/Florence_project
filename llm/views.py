@@ -7,6 +7,8 @@ from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from django.http import Http404, JsonResponse
 import logging
+from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 
 from .utils import process_llm_query
 from .models import LLMConversation, ChatManager
@@ -14,13 +16,25 @@ from .serializers import (
     QuerySerializer, ResponseSerializer, LLMConversationSerializer,
     LLMConversationEditSerializer, LLMConversationDeleteSerializer,
     ChatRoomSerializer, ChatRoomCreateSerializer, ChatRoomListSerializer, 
-    ChatMessageCreateSerializer, ChatRoomSummarizeSerializer
+    ChatMessageCreateSerializer, ChatRoomSummarizeSerializer,
+    LLMAgentQuerySerializer, LLMAgentResponseSerializer
 )
 from accounts.models import Pregnancy  # Pregnancy 모델 임포트
 from langchain_community.document_loaders import JSONLoader
 from langchain_community.retrievers import TFIDFRetriever
 from langchain.chains import RetrievalQA
 from .rag_service import rag_service, query_by_pregnancy_week, RAGService  # RAG 서비스 직접 임포트
+from accounts.models import User
+
+# 추가 import
+import os
+from langchain_openai import ChatOpenAI
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain.prompts import ChatPromptTemplate
+from langchain_community.tools import TavilySearchResults
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # User 모델 가져오기
 User = get_user_model()
@@ -559,3 +573,191 @@ class ChatRoomSummarizeView(APIView):
         except Exception as e:
             logger.error(f"채팅방 요약 중 오류: {str(e)}")
             return Response({"error": f"요청 처리 중 오류가 발생했습니다: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class LLMAgentQueryView(generics.GenericAPIView):
+    """
+    검색 도구를 활용한 LLM 에이전트 API
+    
+    이 API는 TavilySearchResults 도구를 사용하여 웹 검색을 통해 
+    임신 관련 질문에 답변하는 LLM 에이전트를 제공합니다.
+    RAG를 사용하지 않고 웹 검색 결과를 기반으로 답변합니다.
+    """
+    serializer_class = LLMAgentQuerySerializer
+    permission_classes = [AllowAny]
+    
+    def initialize_agent(self):
+        """LLM 에이전트 초기화"""
+        # GPT-4o-mini 모델 초기화
+        llm = ChatOpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.LLM_MODEL,
+            temperature=0.7,
+            timeout=120  # 타임아웃 시간 증가 (2분)
+        )
+        
+        # 검색 쿼리 및 결과 기록을 위한 리스트
+        search_queries = []
+        search_results = []
+        
+        # Tavily 검색 도구 초기화
+        tavily_search = TavilySearchResults(
+            api_key=os.getenv('TAVILY_API_KEY'),
+            max_results=2,
+            include_answer=True,
+            include_raw_content=True
+        )
+        
+        # 검색 함수 래핑
+        def tavily_search_with_tracking(query):
+            """검색 쿼리 추적 기능을 가진 Tavily 검색 함수"""
+            logger.info(f"Tavily 검색 실행: {query}")
+            search_queries.append(query)
+            try:
+                result = tavily_search.invoke({"query": query})
+                search_results.append(result)
+                return result
+            except Exception as e:
+                logger.error(f"검색 오류: {str(e)}")
+                return "검색 중 오류가 발생했습니다. 다른 검색어로 시도해 보세요."
+        
+        # 도구 리스트 생성
+        from langchain.tools import Tool
+        tools = [
+            Tool(
+                name="tavily_search_results_json",
+                func=tavily_search_with_tracking,
+                description="웹에서 임신과 출산 관련 최신 정보를 검색하는 도구입니다. 임신, 출산, 태아 발달, 산모 건강 등에 관한 질문에 사용하세요."
+            )
+        ]
+        
+        # structured_chat_agent 프롬프트 템플릿 생성
+        from langchain.agents import AgentExecutor, create_structured_chat_agent
+        
+        # 프롬프트 템플릿 - 필요한 변수들: tools, tool_names, agent_scratchpad
+        agent_prompt = ChatPromptTemplate.from_messages([
+            ("system", """당신은 산모의 건강을 책임지는 상담가입니다. 임신과 관련된 질문에 답변하고, 사용자에게 유용한 정보를 제공하세요.
+
+사용 가능한 도구: {tools}
+도구 이름: {tool_names}
+
+다음 정보를 활용하여 답변하세요:
+- 사용자 ID
+- 태명 (아기 이름)
+- 임신 주차
+
+간단한 개인 질문(내 이름은?, 내 아기 이름은?, 몇 주차야? 등)에는 제공된 사용자 정보를 활용해 즉시 답변하세요.
+임신과 관련 없는 일반적인 질문에도 간단히 답변해 주세요.
+임신 관련 질문에는 검색 도구를 사용해 정확한 정보를 찾아 답변하세요.
+
+항상 한국어로 친절하게 답변하세요.
+
+다음 형식으로 응답하세요:
+Question: 최종적으로 답변해야 하는 질문
+Thought: 무엇을 해야 하는지 생각해보세요.
+Action: 
+```
+{{"action": "$TOOL_NAME", "action_input": "$INPUT"}}
+```
+Observation: 도구 실행 결과
+... (필요에 따라 Thought/Action/Observation 반복)
+Thought: 이제 답변할 준비가 되었습니다.
+Action:
+```
+{{"action": "Final Answer", "action_input": "사용자에게 보낼 최종 답변"}}
+```
+"""),
+            ("human", "question: {input}"),
+            ("human", "thought: {agent_scratchpad}")
+        ])
+        
+        # 에이전트 생성
+        agent = create_structured_chat_agent(llm, tools, agent_prompt)
+        
+        # 에이전트 실행기 생성
+        agent_executor = AgentExecutor(
+            agent=agent,
+            tools=tools,
+            verbose=True,
+            max_iterations=5,
+            handle_parsing_errors=True,  # 파싱 오류 처리
+            early_stopping_method="generate",  # 조기 종료시 생성 시도
+            timeout=180  # 3분 타임아웃
+        )
+        
+        return agent_executor, search_queries, search_results
+
+    def post(self, request):
+        """LLM 에이전트 API 엔드포인트"""
+        try:
+            # 요청 데이터 검증
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            # 검증된 데이터 추출
+            user_id = serializer.validated_data.get('user_id')
+            query_text = serializer.validated_data.get('query_text')
+            baby_name = serializer.validated_data.get('baby_name', '태아')
+            pregnancy_week = serializer.validated_data.get('pregnancy_week', 0)
+            
+            # 로그 출력
+            logger.info(f"질문: '{query_text}' (사용자: {user_id}, 태명: {baby_name}, 주차: {pregnancy_week})")
+            
+            # 간단한 사용자 객체 생성 (DB 조회 없이)
+            user = type('SimpleUser', (), {'name': '사용자'})()
+            
+            # 에이전트에 전달할 쿼리 강화
+            enhanced_query = f"""질문: {query_text}
+
+사용자 정보:
+- 사용자 ID: {user_id}
+- 태명: {baby_name}
+- 임신 주차: {pregnancy_week}주"""
+            
+            # 에이전트 초기화 및 실행
+            agent_executor, search_queries, search_results = self.initialize_agent()
+            agent_response = agent_executor.invoke({"input": enhanced_query})
+            
+            # 응답 추출
+            response_text = agent_response.get('output', '')
+            
+            # 태명으로 일반 단어 대체
+            if baby_name:
+                response_text = response_text.replace("아기", baby_name).replace("태아", baby_name)
+            
+            # 검색 결과 정리
+            formatted_search_results = []
+            for result in search_results:
+                if isinstance(result, list):
+                    formatted_search_results.extend(result)
+                else:
+                    formatted_search_results.append(result)
+            
+            # 응답 저장
+            conversation = LLMConversation.objects.create(
+                user=User.objects.get(user_id=user_id),
+                query=query_text,
+                response=response_text,
+                user_info={
+                    "name": user.name,
+                    "baby_name": baby_name,
+                    "pregnancy_week": pregnancy_week
+                },
+                source_documents=[],
+                using_rag=False
+            )
+            
+            # 응답 시리얼라이즈
+            response_serializer = LLMAgentResponseSerializer({
+                "response": response_text,
+                "search_results": formatted_search_results,
+                "search_queries": search_queries
+            })
+            
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Agent API 오류: {str(e)}")
+            return Response(
+                {"error": "서버 오류가 발생했습니다. 나중에 다시 시도해주세요."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
