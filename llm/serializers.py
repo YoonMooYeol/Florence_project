@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import LLMConversation
+from .models import LLMConversation, ChatManager
 
 class QuerySerializer(serializers.Serializer):
     user_id = serializers.CharField(required=True)
@@ -23,7 +23,7 @@ class LLMConversationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = LLMConversation
-        fields = ['id', 'name', 'query', 'response', 'user_info', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'query', 'response', 'user_info', 'source_documents', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_name(self, obj):
@@ -47,4 +47,68 @@ class LLMConversationDeleteSerializer(serializers.Serializer):
     )
     
     class Meta:
-        fields = ['delete_mode'] 
+        fields = ['delete_mode']
+
+# 채팅 관련 시리얼라이저
+class ChatMessageCreateSerializer(serializers.Serializer):
+    """채팅방에서 메시지 생성 시리얼라이저"""
+    query = serializers.CharField(required=True)
+    
+    class Meta:
+        fields = ['query']
+
+class ChatRoomMessageSerializer(serializers.ModelSerializer):
+    """채팅방 메시지 시리얼라이저"""
+    class Meta:
+        model = LLMConversation
+        fields = ['id', 'query', 'response', 'source_documents', 'using_rag', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+class ChatRoomSerializer(serializers.ModelSerializer):
+    """채팅방 시리얼라이저"""
+    messages = serializers.SerializerMethodField()
+    user_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ChatManager
+        fields = ['chat_id', 'user', 'user_name', 'topic', 'pregnancy', 'message_count', 'is_active', 'messages', 'created_at', 'updated_at']
+        read_only_fields = ['chat_id', 'message_count', 'created_at', 'updated_at']
+    
+    def get_messages(self, obj):
+        """최근 메시지 5개를 가져옵니다"""
+        recent_messages = obj.messages.all().order_by('-created_at')[:5]
+        return ChatRoomMessageSerializer(recent_messages, many=True).data
+    
+    def get_user_name(self, obj):
+        if obj.user:
+            return obj.user.name
+        return ""
+
+class ChatRoomCreateSerializer(serializers.ModelSerializer):
+    """채팅방 생성 시리얼라이저"""
+    class Meta:
+        model = ChatManager
+        fields = ['user', 'pregnancy', 'is_active']
+        
+class ChatRoomListSerializer(serializers.ModelSerializer):
+    """채팅방 목록 시리얼라이저"""
+    user_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ChatManager
+        fields = ['chat_id', 'user', 'user_name', 'topic', 'message_count', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['chat_id', 'message_count', 'created_at', 'updated_at']
+    
+    def get_user_name(self, obj):
+        if obj.user:
+            return obj.user.name
+        return ""
+        
+class ChatRoomSummarizeSerializer(serializers.Serializer):
+    """채팅방 요약 시리얼라이저"""
+    topic = serializers.CharField(read_only=True)
+    message_count = serializers.IntegerField(read_only=True)
+    is_updated = serializers.BooleanField(read_only=True)
+    
+    class Meta:
+        fields = ['topic', 'message_count', 'is_updated'] 

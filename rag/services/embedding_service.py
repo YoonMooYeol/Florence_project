@@ -59,6 +59,9 @@ class EmbeddingService:
         Returns:
             처리 결과 정보
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         file_result = {
             'file_path': file_path,
             'file_type': file_type,
@@ -70,23 +73,102 @@ class EmbeddingService:
             # 1. 파일 확장자 확인
             file_ext = os.path.splitext(file_path)[1].lower()
             
+            # SimpleRAG 인스턴스 생성
+            rag = SimpleRAG()
+            
             if file_ext == '.csv':
                 # 2. SimpleRAG로 CSV 파일 처리
-                SimpleRAG.process_file(file_path)
+                logger.info(f"CSV 파일 처리 시작: {file_path}")
+                documents = rag.process_file(file_path)
+                
+                # 임베딩 및 벡터 DB 저장 - 필수!
+                if documents and len(documents) > 0:
+                    from langchain_openai import OpenAIEmbeddings
+                    from langchain_chroma import Chroma
+                    
+                    logger.info(f"문서를 벡터 DB에 저장 시작: {len(documents)}개")
+                    
+                    # 임베딩 설정
+                    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+                    
+                    # 벡터 저장소 설정
+                    vectorstore = Chroma(
+                        persist_directory=SimpleRAG.DB_DIR,
+                        embedding_function=embeddings,
+                        collection_name="korean_dialogue"
+                    )
+                    
+                    # 문서 추가 (기존 문서 덮어쓰기)
+                    vectorstore.add_documents(documents)
+                    
+                    # persist가 없는 경우 처리 (버전 차이)
+                    # 최신 버전의 Chroma에서는 문서 추가 시 자동으로 저장됨
+                    logger.info(f"문서 저장 완료: {len(documents)}개")
+                
                 file_result['status'] = 'success'
-                file_result['documents_embedded'] = 1  # 단순화를 위해 1로 설정
+                file_result['documents_embedded'] = len(documents) if documents else 0
                 
             elif file_ext == '.txt':
                 # 3. SimpleRAG로 TXT 파일 처리
-                SimpleRAG.process_file(file_path)  # txt 파일 처리 로직 추가
+                logger.info(f"TXT 파일 처리 시작: {file_path}")
+                documents = rag.process_file(file_path)
+                
+                # 임베딩 및 벡터 DB 저장
+                if documents and len(documents) > 0:
+                    from langchain_openai import OpenAIEmbeddings
+                    from langchain_chroma import Chroma
+                    
+                    logger.info(f"문서를 벡터 DB에 저장 시작: {len(documents)}개")
+                    
+                    # 임베딩 설정
+                    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+                    
+                    # 벡터 저장소 설정
+                    vectorstore = Chroma(
+                        persist_directory=SimpleRAG.DB_DIR,
+                        embedding_function=embeddings,
+                        collection_name="korean_dialogue"
+                    )
+                    
+                    # 문서 추가
+                    vectorstore.add_documents(documents)
+                    
+                    # 최신 버전의 Chroma에서는 문서 추가 시 자동으로 저장됨
+                    logger.info(f"문서 저장 완료: {len(documents)}개")
+                
                 file_result['status'] = 'success'
-                file_result['documents_embedded'] = 1  # 단순화를 위해 1로 설정
+                file_result['documents_embedded'] = len(documents) if documents else 0
                 
             elif file_ext == '.json' or file_ext == '.jsonl':
                 # JSON 또는 JSONL 파일 처리
-                SimpleRAG.process_file(file_path)
+                logger.info(f"JSON/JSONL 파일 처리 시작: {file_path}")
+                documents = rag.process_file(file_path)
+                
+                # 임베딩 및 벡터 DB 저장
+                if documents and len(documents) > 0:
+                    from langchain_openai import OpenAIEmbeddings
+                    from langchain_chroma import Chroma
+                    
+                    logger.info(f"문서를 벡터 DB에 저장 시작: {len(documents)}개")
+                    
+                    # 임베딩 설정
+                    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+                    
+                    # 벡터 저장소 설정
+                    vectorstore = Chroma(
+                        persist_directory=SimpleRAG.DB_DIR,
+                        embedding_function=embeddings,
+                        collection_name="korean_dialogue"
+                    )
+                    
+                    # 문서 추가
+                    vectorstore.add_documents(documents)
+                    
+                    # 최신 버전의 Chroma에서는 문서 추가 시 자동으로 저장됨
+                    logger.info(f"문서 저장 완료: {len(documents)}개")
+                
                 file_result['status'] = 'success'
-                file_result['documents_embedded'] = 1  # 단순화를 위해 1로 설정
+                file_result['documents_embedded'] = len(documents) if documents else 0
                 
             else:
                 # 4. 지원하지 않는 파일 형식 처리
