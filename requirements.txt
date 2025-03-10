@@ -18,7 +18,8 @@ chroma-hnswlib==0.7.6
 chromadb==0.6.3
 click==8.1.8
 colorama==0.4.6
-coloredlogs==15.0.1
+coloredlgs==15.0.1
+cryptography==44.0.2
 dataclasses-json==0.6.7
 decouple==0.0.7
 Deprecated==1.2.18
@@ -165,7 +166,6 @@ tzdata==2025.1
 uritemplate==4.1.1
 urllib3==2.3.0
 uvicorn==0.34.0
-uvloop==0.21.0
 watchfiles==1.0.4
 webdriver-manager==4.0.2
 websocket-client==1.8.0
