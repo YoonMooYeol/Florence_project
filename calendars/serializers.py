@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Event, EventConversationSummary
+from .models import Event, DailyConversationSummary
+from llm.models import LLMConversation
 
 class EventSerializer(serializers.ModelSerializer):
     class Meta:
@@ -13,32 +14,31 @@ class EventDetailSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['event_id', 'created_at', 'updated_at']
 
-class EventConversationSummarySerializer(serializers.ModelSerializer):
-    """일정 대화 요약 시리얼라이저"""
+class DailyConversationSummarySerializer(serializers.ModelSerializer):
     class Meta:
-        model = EventConversationSummary
+        model = DailyConversationSummary
         fields = '__all__'
         read_only_fields = ['summary_id', 'created_at', 'updated_at']
 
-class EventConversationSummaryDetailSerializer(serializers.ModelSerializer):
-    """일정 대화 요약 상세 시리얼라이저"""
-    event_title = serializers.CharField(source='event.title', read_only=True)
-    event_type = serializers.CharField(source='event.event_type', read_only=True)
-    event_day = serializers.DateField(source='event.event_day', read_only=True)
+class DailyConversationSummaryCreateSerializer(serializers.ModelSerializer):
+    conversation_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=True,
+        write_only=True
+    )
     
     class Meta:
-        model = EventConversationSummary
-        fields = ['summary_id', 'event', 'event_title', 'event_type', 'event_day', 
-                  'summary_text', 'generated_date', 'created_at', 'updated_at']
-        read_only_fields = ['summary_id', 'created_at', 'updated_at']
+        model = DailyConversationSummary
+        fields = ['pregnancy', 'summary_date', 'summary_text', 'conversation_ids']
+        read_only_fields = ['user', 'summary_id', 'created_at', 'updated_at']
 
-class MonthlyConversationSummarySerializer(serializers.Serializer):
-    """월별 대화 요약 시리얼라이저"""
-    year = serializers.IntegerField()
-    month = serializers.IntegerField()
-    event_summaries = EventConversationSummarySerializer(many=True)
+    def create(self, validated_data):
+        conversation_ids = validated_data.pop('conversation_ids')
+        summary = DailyConversationSummary.objects.create(**validated_data)
+        
+        # 관련 대화 연결
+        conversations = LLMConversation.objects.filter(id__in=conversation_ids)
+        summary.conversations.set(conversations)
+        
+        return summary
 
-class DailyConversationSummarySerializer(serializers.Serializer):
-    """일별 대화 요약 시리얼라이저"""
-    date = serializers.DateField()
-    event_summaries = EventConversationSummarySerializer(many=True)
