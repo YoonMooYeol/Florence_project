@@ -1,3 +1,5 @@
+from cgitb import reset
+
 from rest_framework import serializers
 from .models import User, Pregnancy
 from django.contrib.auth.password_validation import validate_password
@@ -124,11 +126,12 @@ class PasswordResetSerializer(serializers.Serializer):
         return value
 
 class PasswordResetCheckSerializer(serializers.Serializer):
-    code = serializers.CharField()
+    reset_code = serializers.CharField()
 
     def validate_code(self, value):
-        user = User.objects.get(reset_code=value)
-        if not user or not user.check_reset_code(value):
+        # 입력된 인증 코드로 사용자 확인
+        user = User.objects.filter(reset_code=value).first()
+        if not user or not user.check_reset_code(value):  # 인증 코드 유효성 검사
             raise serializers.ValidationError("만료되었거나 잘못된 코드입니다.")
         return value
 
@@ -136,14 +139,15 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     reset_code = serializers.CharField()
     new_password = serializers.CharField()
 
-    def validate_code(self, value):
+    def validate_reset_code(self, value):
         # 코드로 사용자 존재 여부 확인
-        user = User.objects.get(reset_code=value)
+        user = User.objects.filter(reset_code=value).first()
         if not user or not user.check_reset_code(value):
             raise serializers.ValidationError("만료되었거나 잘못된 코드입니다.")
         return value
 
     def validate_new_password(self, value):
+        # 비밀번호 최소 8자 이상이어야 함
         if len(value) < 8:
             raise serializers.ValidationError("비밀번호는 최소 8자 이상이어야 합니다.")
         return value
