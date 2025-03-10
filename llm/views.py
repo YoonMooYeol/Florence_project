@@ -29,6 +29,7 @@ from accounts.models import User
 # 추가 import
 import os
 from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain.prompts import ChatPromptTemplate
 from langchain_community.tools import TavilySearchResults
@@ -582,16 +583,17 @@ class LLMAgentQueryView(generics.GenericAPIView):
     임신 관련 질문에 답변하는 LLM 에이전트를 제공합니다.
     RAG를 사용하지 않고 웹 검색 결과를 기반으로 답변합니다.
     """
-    serializer_class = LLMAgentQuerySerializer
+    serializer = LLMAgentQuerySerializer
     permission_classes = [AllowAny]
+    google_api_key = os.getenv('GOOGLE_KEY', None)
     
     def initialize_agent(self):
         """LLM 에이전트 초기화"""
         # GPT-4o-mini 모델 초기화
-        llm = ChatOpenAI(
-            api_key=settings.OPENAI_API_KEY,
-            model=settings.LLM_MODEL,
-            temperature=0.7,
+        llm = ChatGoogleGenerativeAI(
+            api_key=self.google_api_key,
+            model='gemini-2.0-flash',
+            temperature=0.0,
             timeout=120  # 타임아웃 시간 증가 (2분)
         )
         
@@ -640,11 +642,6 @@ class LLMAgentQueryView(generics.GenericAPIView):
 Available tools: {tools}  
 Tool names: {tool_names}
 
-Use the following information to answer questions:  
-- User ID  
-- Baby's nickname  
-- Pregnancy weeks  
-
 For simple personal questions (e.g., What's my name? What's my baby's name? How many weeks am I?), use the provided user information to answer immediately.  
 For general non-pregnancy-related questions, provide a brief answer.  
 For pregnancy-related questions, use the search tool to find accurate information.  
@@ -691,40 +688,36 @@ Action:
     def post(self, request):
         """LLM 에이전트 API 엔드포인트"""
         try:
-            # 요청 데이터 검증
-            serializer = self.get_serializer(data=request.data)
+            # 요청 데이터
+            serializer = LLMAgentQuerySerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             
             # 검증된 데이터 추출
             user_id = serializer.validated_data.get('user_id')
             query_text = serializer.validated_data.get('query_text')
-            baby_name = serializer.validated_data.get('baby_name', '태아')
-            pregnancy_week = serializer.validated_data.get('pregnancy_week', 0)
+            baby_name = serializer.validated_data.get('baby_name', '아기')  # 기본값 추가
+            pregnancy_week = serializer.validated_data.get('pregnancy_week', 0)  # 기본값 추가
+            
+            print(user_id, query_text, baby_name, pregnancy_week)
+            
             
             # 로그 출력
-            logger.info(f"질문: '{query_text}' (사용자: {user_id}, 태명: {baby_name}, 주차: {pregnancy_week})")
-            
-            # 간단한 사용자 객체 생성 (DB 조회 없이)
-            user = type('SimpleUser', (), {'name': '사용자'})()
+            logger.info(f"question: '{query_text}' (user_id: {user_id}, baby_name: {baby_name}, pregnancy_week: {pregnancy_week})")
             
             # 에이전트에 전달할 쿼리 강화
-            enhanced_query = f"""질문: {query_text}
+            enhanced_query = f"""question: {query_text}
 
-사용자 정보:
-- 사용자 ID: {user_id}
-- 태명: {baby_name}
-- 임신 주차: {pregnancy_week}주"""
-            
+user information:
+- user_id: {user_id}
+- baby_name: {baby_name}
+- pregnancy_week: {pregnancy_week}"""
+            print(enhanced_query)
             # 에이전트 초기화 및 실행
             agent_executor, search_queries, search_results = self.initialize_agent()
             agent_response = agent_executor.invoke({"input": enhanced_query})
             
             # 응답 추출
             response_text = agent_response.get('output', '')
-            
-            # 태명으로 일반 단어 대체
-            if baby_name:
-                response_text = response_text.replace("아기", baby_name).replace("태아", baby_name)
             
             # 검색 결과 정리
             formatted_search_results = []
@@ -740,7 +733,7 @@ Action:
                 query=query_text,
                 response=response_text,
                 user_info={
-                    "name": user.name,
+                    "name": user_id,
                     "baby_name": baby_name,
                     "pregnancy_week": pregnancy_week
                 },
