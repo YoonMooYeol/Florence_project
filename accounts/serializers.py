@@ -123,3 +123,27 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         if len(value) < 8:
             raise serializers.ValidationError("비밀번호는 최소 8자 이상이어야 합니다.")
         return value
+
+class FindUsernameSerializer(serializers.Serializer):
+    """ 아이디 찾기 시리얼라이저 """
+    name = serializers.CharField(max_length=100)
+    phone_number = serializers.CharField(max_length=20)
+
+    def validate(self, data):
+        name = data.get('name')
+        phone_number = data.get('phone_number')
+
+        try:
+            user = User.objects.get(name=name, phone_number=phone_number)
+
+        except User.DoesNotExist:
+            raise serializers.ValidationError(f"이름 '{name}'과 전화번호 '{phone_number}'에 일치하는 사용자가 없습니다.")
+
+        return {'username': user.username}
+
+
+
+
+
+
+

@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
+from rest_framework.generics import GenericAPIView
 
 
 from django.contrib.auth import authenticate
@@ -17,7 +18,7 @@ from django.core.mail import EmailMessage, get_connection
 
 from .serializers import(
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
-    PasswordResetSerializer, PasswordResetCheckSerializer
+    PasswordResetSerializer, PasswordResetCheckSerializer, FindUsernameSerializer
 )
 from .models import User, Pregnancy
 from dotenv import load_dotenv
@@ -118,7 +119,6 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email']
-
 
         # 사용자 확인
         user = User.objects.get(email__iexact=email)
@@ -316,5 +316,16 @@ class PregnancyViewSet(viewsets.ModelViewSet):
     #         status=status.HTTP_404_NOT_FOUND
     #     )
 
-# class FindUsernameView(generics.GenericAPIView):
-#     """ 아이디 찾기 """
+class FindUsernameAPIView(GenericAPIView):
+    """ 일반 로그인 사용자 아이디 찾기"""
+    permission_classes = [permissions.AllowAny]  # 인증 없이 사용 가능
+
+    serializer_class = FindUsernameSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+
+        if serializer.is_valid():
+            return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
