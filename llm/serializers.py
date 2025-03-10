@@ -117,6 +117,8 @@ class LLMAgentQuerySerializer(serializers.Serializer):
     """LLM 에이전트 질문 시리얼라이저"""
     user_id = serializers.CharField(required=True)
     query_text = serializers.CharField(required=True)
+    baby_name = serializers.CharField(required=False, default='태아')
+    pregnancy_week = serializers.IntegerField(required=False, default=0)
     
     class Meta:
         fields = ['user_id', 'query_text']
