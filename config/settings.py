@@ -48,10 +48,11 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    
+
     #third party apps
     'rest_framework_simplejwt', #JWT 인증
     "rest_framework", #DRF
+    "rest_framework.authtoken", #Token 인증
     "corsheaders", #CORS 허용
     "drf_spectacular", #API 문서
     
@@ -61,6 +62,19 @@ INSTALLED_APPS = [
     "llm",
     "healthcare",
     "calendars",
+    
+    # allauth 관련
+    'django.contrib.sites',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.kakao',
+    'allauth.socialaccount.providers.naver',
+    'allauth.socialaccount.providers.google',
+    
+    # REST API 연동
+    'dj_rest_auth',
+    'dj_rest_auth.registration',
 ]
 
 MIDDLEWARE = [
@@ -72,6 +86,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware", # allauth 미들웨어
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -202,42 +217,134 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 # SMTP SETTING
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
-EMAIL_SITE= os.getenv("EMAIL_SITE", "Gmail")    #기본 gmail로 설정
+import os
 
+
+EMAIL_SITE = os.getenv("EMAIL_SITE", "Gmail")  # 기본값은 Gmail
+
+# SMTP 설정을 정의
 SMTP_CONFIG = {
-    "GMAIL":{
-        "EMAIL_HOST" : "smtp.gmail.com",
-        "EMAIL_USE_TLS" : True,
-        "EMAIL_PORT" : 587,
-            "EMAIL_HOST_USER": os.getenv('GMAIL_USER', 'your_gmail@gmail.com'),
-            "EMAIL_HOST_PASSWORD": os.getenv('GMAIL_PASSWORD', 'your_gmail_password')
+    "GMAIL": {
+        "HOST": "smtp.gmail.com",
+        "USE_TLS": True,
+        "PORT": 587,
+        "HOST_USER": os.getenv('GMAIL_USER', 'your_gmail@gmail.com'),
+        "HOST_PASSWORD": os.getenv('GMAIL_PASSWORD', 'your_gmail_password')
     },
-    "NAVER":{
-        "EMAIL_HOST" : "smtp.gmail.com",
-        "EMAIL_USE_TLS" : True,
-        "EMAIL_PORT" : 587,
-        "EMAIL_HOST_USER": os.getenv('NAVER_USER', 'NAVER_EMAIL_USER'),
-        "EMAIL_HOST_PASSWORD": os.getenv('NAVER_PASSWORD', 'NAVER_PASSWORD_USER')
+    "NAVER": {
+        "HOST": "smtp.naver.com",
+        "USE_TLS": True,
+        "PORT": 587,
+        "HOST_USER": os.getenv('NAVER_USER', 'NAVER_EMAIL_USER'),
+        "HOST_PASSWORD": os.getenv('NAVER_PASSWORD', 'NAVER_PASSWORD_USER')
     },
-    "KAKAO":{
-        "EMAIL_HOST" : "smtp.gmail.com",
-        "EMAIL_USE_TLS" : True,
-        "EMAIL_PORT" : 587,
-        "EMAIL_HOST_USER": os.getenv('KAKAO_USER', 'your_gmail@gmail.com'),
-        "EMAIL_HOST_PASSWORD": os.getenv('KAKAO_PASSWORD', 'your_gmail_password')
+    "KAKAO": {
+        "HOST": "smtp.kakao.com",
+        "USE_TLS": True,
+        "PORT": 587,
+        "HOST_USER": os.getenv('HOST_USER'),
+        "HOST_PASSWORD": os.getenv('HOST_PASSWORD')
     }
 }
 
+# 이메일 설정에 맞는 서비스를 선택 (기본값은 Gmail)
 EMAIL_CONFIG = SMTP_CONFIG.get(EMAIL_SITE, SMTP_CONFIG['GMAIL'])
 
-EMAIL_HOST = EMAIL_CONFIG['EMAIL_HOST']
-EMAIL_USE_TLS = EMAIL_CONFIG['EMAIL_USE_TLS']
-EMAIL_PORT = EMAIL_CONFIG['EMAIL_PORT']
-EMAIL_HOST_USER = EMAIL_CONFIG['EMAIL_HOST_USER']
-EMAIL_HOST_PASSWORD = EMAIL_CONFIG['EMAIL_HOST_PASSWORD']
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+# 선택한 이메일 설정 값을 가져오기
+HOST = EMAIL_CONFIG['HOST']
+USE_TLS = EMAIL_CONFIG['USE_TLS']
+PORT = EMAIL_CONFIG['PORT']
+HOST_USER = EMAIL_CONFIG['HOST_USER']
+HOST_PASSWORD = EMAIL_CONFIG['HOST_PASSWORD']
 
+# Django 설정: 이메일 관련 설정
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = HOST
+EMAIL_PORT = PORT
+EMAIL_USE_TLS = USE_TLS
+EMAIL_HOST_USER = HOST_USER
+EMAIL_HOST_PASSWORD = HOST_PASSWORD
+DEFAULT_FROM_EMAIL = HOST_USER  # 기본 발신자 이메일 주소
 
+SPECTACULAR_SETTINGS = {
+    "COMPONENT_SPLIT_REQUEST": True
+}
+
+SITE_ID = 1
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
+
+# Allauth 설정
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_EMAIL_VERIFICATION = 'optional'  # 개발 중에는 'optional'로 설정
+ACCOUNT_CONFIRM_EMAIL_ON_GET = True
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 1
+
+# 최신 allauth 버전 설정
+ACCOUNT_LOGIN_METHODS = {'email'} 
+ACCOUNT_RATE_LIMITS = {
+    'login_failed': {'period': 300, 'limit': 5}  # 5회 실패 시 300초 제한
+}
+
+# REST 프레임워크와 JWT 통합
+REST_USE_JWT = True
+JWT_AUTH_COOKIE = 'jwt-auth'
+JWT_AUTH_REFRESH_COOKIE = 'jwt-refresh-token'
+
+# dj-rest-auth 설정
+REST_AUTH = {
+    'TOKEN_MODEL': None,  # 토큰 모델을 사용하지 않음 (JWT만 사용)
+    'JWT_AUTH_COOKIE': 'jwt-auth',
+    'JWT_AUTH_REFRESH_COOKIE': 'jwt-refresh-token',
+    'USE_JWT': True,
+}
+
+# 소셜 어카운트 설정
+SOCIALACCOUNT_PROVIDERS = {
+    'kakao': {
+        'APP': {
+            'client_id': os.environ.get('REST_KAKAO_API'),
+            'secret': '',  # 카카오는 secret이 없음
+            'key': ''
+        }
+    },
+    'naver': {
+        'APP': {
+            'client_id': os.environ.get('NAVER_CLIENT_ID', ''),
+            'secret': os.environ.get('NAVER_CLIENT_SECRET', ''),
+            'key': ''
+        }
+    },
+    'google': {
+        'APP': {
+            'client_id': os.environ.get('GOOGLE_CLIENT_ID', ''),
+            'secret': os.environ.get('GOOGLE_CLIENT_SECRET', ''),
+            'key': ''
+        }
+    }
+}
+
+# REST Framework 설정 (기존 설정이 있다면 합치기)
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'dj_rest_auth.jwt_auth.JWTCookieAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
+    'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.AnonRateThrottle',
+                              'rest_framework.throttling.UserRateThrottle'],
+    'DEFAULT_THROTTLE_RATES': {'anon': '100/day', 'user': '1000/day'},
+    'EXCEPTION_HANDLER': 'config.exception_handler.custom_exception_handler',
+}
+
+ACCOUNT_ADAPTER = 'accounts.adapters.CustomAccountAdapter'
+SOCIALACCOUNT_ADAPTER = 'accounts.adapters.CustomSocialAccountAdapter'
 
