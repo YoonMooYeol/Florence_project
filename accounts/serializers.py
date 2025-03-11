@@ -8,7 +8,9 @@ class UserSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['user_id', 'username', 'name', 'email', 'phone_number', 'password', 'password_confirm', 'gender', 'is_pregnant', 'address']
+        fields = ['user_id', 'username', 'name', 'email', 'phone_number', 'password', 'password_confirm',
+                  'gender', 'is_pregnant', 'address'
+                ]
         read_only_fields = ['user_id']
     
     def validate(self, data):
@@ -113,8 +115,9 @@ class ChangePasswordSerializer(serializers.Serializer):
         
         return data
 
-# 직렬화 클래스 정의
+
 class PasswordResetSerializer(serializers.Serializer):
+    """ 비밀번호 찾기 - 인증 코드 전송 """
     email = serializers.EmailField()
 
     def validate_email(self, value):
@@ -124,6 +127,7 @@ class PasswordResetSerializer(serializers.Serializer):
         return value
 
 class PasswordResetCheckSerializer(serializers.Serializer):
+    """ 비밀번호 찾기 - 인증 확인 """
     reset_code = serializers.CharField()
 
     def validate_code(self, value):
@@ -133,7 +137,9 @@ class PasswordResetCheckSerializer(serializers.Serializer):
             raise serializers.ValidationError("만료되었거나 잘못된 코드입니다.")
         return value
 
+
 class PasswordResetConfirmSerializer(serializers.Serializer):
+    """ 비밀번호 찾기 - 재설정 시리얼라이저 """
     reset_code = serializers.CharField()
     new_password = serializers.CharField()
 
@@ -149,6 +155,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         if len(value) < 8:
             raise serializers.ValidationError("비밀번호는 최소 8자 이상이어야 합니다.")
         return value
+
 
 class FindUsernameSerializer(serializers.Serializer):
     """ 아이디 찾기 시리얼라이저 """
@@ -172,6 +179,7 @@ class FindUsernameSerializer(serializers.Serializer):
         return {
             'masked_email': masked_email
         }
+
 
 class RegisterEmailSerializer(serializers.Serializer):
     email = serializers.EmailField()
