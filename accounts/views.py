@@ -78,7 +78,7 @@ class RegisterSendEmailView(APIView):
 
         # 이메일 전송
         send_mail(
-            subject="[Touch_Moms] 이메일 인증 코드 안내",
+            subject="[핥빝] 이메일 인증 코드 안내",
             message=f"안녕하세요.\n인증 코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[email],
