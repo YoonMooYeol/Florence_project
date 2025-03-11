@@ -163,11 +163,17 @@ class FindUsernameSerializer(serializers.Serializer):
 
         try:
             user = User.objects.get(name=name, phone_number=phone_number)
-
         except User.DoesNotExist:
             raise serializers.ValidationError(f"이름 '{name}'과 전화번호 '{phone_number}'에 일치하는 사용자가 없습니다.")
 
-        return {'username': user.username}
+        # 이메일 마스킹 (앞 3글자만 보이고 @ 이전은 *로 처리)
+        email = user.email
+        local, domain = email.split('@')
+        masked_email = f"{local[:3]}{'*' * (len(local) - 3)}@{domain}"
+
+        return {
+            'masked_email': masked_email
+        }
 
 class RegisterEmailSerializer(serializers.Serializer):
     email = serializers.EmailField()
