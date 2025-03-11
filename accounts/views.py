@@ -1,5 +1,4 @@
 import os
-from django.shortcuts import redirect
 import requests
 import logging
 import random
@@ -13,41 +12,106 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
-from rest_framework.decorators import action
-import logging
-from dotenv import load_dotenv
-from django.contrib.auth.hashers import get_random_string
-from django.http import HttpResponseRedirect, HttpResponse
 from rest_framework.generics import GenericAPIView
 
-
+from django.contrib.auth.hashers import get_random_string
+from django.http import HttpResponseRedirect, HttpResponse
 from django.contrib.auth import authenticate
 from django.conf import settings
-from django.core.mail import EmailMessage, get_connection
+from django.core.mail import get_connection
+from django.core.cache import cache
+
+from django.core.mail import send_mail
 
 from .serializers import(
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
-    PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer
+    PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer,
+    RegisterEmailSerializer
 )
 from .models import User, Pregnancy
+from .models import EmailVerification
 from dotenv import load_dotenv
 
 # .env 파일 로드
 load_dotenv()
 
-
-
-
-
-
 # 로깅 설정
 logger = logging.getLogger(__name__)
+
 
 class RegisterView(generics.CreateAPIView):
     """회원가입 API"""
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [AllowAny]
+
+class RegisterSendEmailView(APIView):
+    """ 회원가입 시 이메일 인증 """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email", "").strip().lower()
+
+        if not email:
+            return Response(
+                {"success": False, "message": "이메일을 입력하세요."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 이메일 형식 검증
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            return Response(
+                {"success": False, "message": "올바른 이메일 주소를 입력하세요."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 인증 코드 생성 (6자리 랜덤 숫자)
+        code = str(random.randint(100000, 999999))
+
+        # 기존 인증 코드 삭제 후 새 코드 저장
+        EmailVerification.objects.filter(email=email).delete()  # 기존 데이터 삭제
+        verification = EmailVerification(email=email, code=code)
+        verification.save()  # DB에 저장
+
+        # 캐시에도 인증 코드 저장 (10분)
+        cache.set(f"email_code_{email}", code, timeout=600)
+
+        # 이메일 전송
+        send_mail(
+            subject="[Touch_Moms] 이메일 인증 코드 안내",
+            message=f"안녕하세요.\n인증 코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+
+        return Response(
+            {"success": True, "message": "인증 코드가 이메일로 전송되었습니다."},
+            status=status.HTTP_200_OK,
+        )
+
+class RegisterCheckView(APIView):
+    """이메일 인증 코드 확인"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        code = request.data.get("code")
+
+        if not email or not code:
+            return Response({"message": "이메일과 인증 코드를 입력하세요."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # DB에서 이메일과 인증 코드 확인
+        try:
+            verification = EmailVerification.objects.get(email=email, code=code)
+
+            if verification.is_expired():
+                return Response({"message": "인증 코드가 만료되었습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({"message": "이메일 인증 성공!"}, status=status.HTTP_200_OK)
+
+        except EmailVerification.DoesNotExist:
+            return Response({"message": "잘못된 인증 코드입니다."}, status=status.HTTP_400_BAD_REQUEST)
 
 class LoginView(APIView):
     """로그인 API"""

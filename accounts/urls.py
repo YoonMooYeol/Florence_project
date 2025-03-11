@@ -7,7 +7,8 @@ from .views import (
     RegisterView, LoginView, TokenRefreshView, PregnancyViewSet, ListUsersView,
     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetViewSet,
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
-    NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView
+    NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView, RegisterSendEmailView,
+    RegisterCheckView
                     )
 
 
@@ -39,4 +40,7 @@ urlpatterns = [
     path('naver/callback/', NaverLoginCallbackView.as_view(), name='naver-callback'),
     path('google/callback/', GoogleLoginCallbackView.as_view(), name='google-callback'),
     path('apple/callback/', NaverLoginCallbackView.as_view(), name='apple-callback'),  # TODO: 애플 로그인 콜백 구현 필요
+
+    path('send_register/', RegisterSendEmailView.as_view(), name='register-send'),
+    path('check_register/', RegisterCheckView.as_view(), name='check-register'),
 ]

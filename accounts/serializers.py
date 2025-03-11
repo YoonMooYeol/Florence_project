@@ -169,6 +169,15 @@ class FindUsernameSerializer(serializers.Serializer):
 
         return {'username': user.username}
 
+class RegisterEmailSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        """이메일 형식만 검증 (DB 조회 X)"""
+        if not value:
+            raise serializers.ValidationError("이메일을 입력해주세요.")
+        return value
+
 
 
 
