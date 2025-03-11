@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.utils import timezone
+from django.utils.timezone import now
 import uuid
 import datetime
 
@@ -136,5 +137,16 @@ class Pregnancy(models.Model):
 
     def __str__(self):
         return f"{self.user.name}님의 임신 정보"
+
+class EmailVerification(models.Model):
+    """ 회원가입 인증 모델"""
+    email = models.EmailField(unique=True)  # 이메일 주소
+    code = models.CharField(max_length=6)  # 인증 코드
+    created_at = models.DateTimeField(auto_now_add=True)  # 생성 시간
+    is_verified = models.BooleanField(default=False)
+
+    def is_expired(self):
+        """인증 코드가 5분이 지나면 만료"""
+        return (now() - self.created_at).seconds > 300  # 300초 = 5분
 
 

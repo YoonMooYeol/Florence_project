@@ -1,3 +1,4 @@
+
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import KakaoLoginCallbackView, RegisterView, LoginView, TokenRefreshView, PregnancyViewSet, ListUsersView, UserDetailView, UpdateUserInfoView, ChangePasswordView, NaverLoginCallbackView, GoogleLoginCallbackView
@@ -6,7 +7,8 @@ from .views import (
     RegisterView, LoginView, TokenRefreshView, PregnancyViewSet, ListUsersView,
     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetViewSet,
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
-    NaverLoginCallbackView, GoogleLoginCallbackView
+    NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView, RegisterSendEmailView,
+    RegisterCheckView
                     )
 
 
@@ -21,6 +23,7 @@ router.register(r'confirm_code', PasswordResetConfirmViewSet, basename='reset-co
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),  # 회원가입
     path('login/', LoginView.as_view(), name='login'),  # 로그인
+    path('find_username/', FindUsernameAPIView.as_view(), name='find-username'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),  # 토큰 갱신
 
     path('', include(pregnancy_router.urls)),  # 임신 관련 API
@@ -37,4 +40,7 @@ urlpatterns = [
     path('naver/callback/', NaverLoginCallbackView.as_view(), name='naver-callback'),
     path('google/callback/', GoogleLoginCallbackView.as_view(), name='google-callback'),
     path('apple/callback/', NaverLoginCallbackView.as_view(), name='apple-callback'),  # TODO: 애플 로그인 콜백 구현 필요
+
+    path('send_register/', RegisterSendEmailView.as_view(), name='register-send'),
+    path('check_register/', RegisterCheckView.as_view(), name='check-register'),
 ]
