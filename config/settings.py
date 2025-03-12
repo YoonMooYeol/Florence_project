@@ -40,7 +40,6 @@ ALLOWED_HOSTS = ['*']  # 모든 호스트 허용
 
 
 # Application definition
-
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -55,6 +54,7 @@ INSTALLED_APPS = [
     "rest_framework.authtoken", #Token 인증
     "corsheaders", #CORS 허용
     "drf_spectacular", #API 문서
+    'django_celery_beat', # Celery
     
     #my apps
     "rag",
@@ -126,6 +126,10 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'config.exception_handler.custom_exception_handler',
     'NON_FIELD_ERRORS_KEY': 'error',
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+
+    'DEFAULT_FILTER_BACKENDS': [ 
+        'django_filters.rest_framework.DjangoFilterBackend',
+    ],
 }
 
 SIMPLE_JWT = {
@@ -348,3 +352,26 @@ REST_FRAMEWORK = {
 ACCOUNT_ADAPTER = 'accounts.adapters.CustomAccountAdapter'
 SOCIALACCOUNT_ADAPTER = 'accounts.adapters.CustomSocialAccountAdapter'
 
+# Celery 설정
+CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Redis를 브로커로 사용
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE  # 한국 시간대 설정
+
+# Celery Beat 설정
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'summarize-yesterday-conversations': {
+        'task': 'calendars.tasks.auto_summarize_yesterday_conversations',
+        'schedule': crontab(hour=3, minute=0),  # 매일 새벽 3시에 실행
+        # 'schedule': 10.0,  # 10초마다 실행 (테스트용)
+    },
+    # 테스트용 태스크
+    # 'test-every-10-seconds': {
+    #     'task': 'calendars.tasks.test_task',
+    #     'schedule': 30.0,
+    # },
+}
