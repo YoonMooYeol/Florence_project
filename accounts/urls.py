@@ -44,5 +44,4 @@ urlpatterns = [
     path('check_register/', RegisterCheckView.as_view(), name='check-register'),
 
     path("follow/<str:name>/", FollowUnfollowView.as_view(), name="follow-name"),
-    path('shared_info/', SharedInfoView.as_view(), name='shared-info'),
 ]
