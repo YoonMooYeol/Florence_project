@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
-from rest_framework.generics import GenericAPIView
+from rest_framework.generics import GenericAPIView, get_object_or_404
 
 from django.contrib.auth.hashers import get_random_string
 from django.http import HttpResponseRedirect, HttpResponse
@@ -24,9 +24,8 @@ from django.core.cache import cache
 from .serializers import(
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
     PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer,
-    RegisterEmailSerializer
 )
-from .models import User, Pregnancy
+from .models import User, Pregnancy, Follow
 from .models import EmailVerification
 from dotenv import load_dotenv
 
@@ -88,6 +87,7 @@ class RegisterSendEmailView(APIView):
             status=status.HTTP_200_OK,
         )
 
+
 class RegisterCheckView(APIView):
     """이메일 인증 코드 확인"""
     permission_classes = [AllowAny]
@@ -110,6 +110,7 @@ class RegisterCheckView(APIView):
 
         except EmailVerification.DoesNotExist:
             return Response({"message": "잘못된 인증 코드입니다."}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class LoginView(APIView):
     """로그인 API"""
@@ -247,6 +248,7 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
         except Exception as e:
             raise Exception(f"이메일 전송 중 오류 발생: {str(e)}")
 
+
 class PasswordResetConfirmViewSet(viewsets.GenericViewSet):
     """ 비밀번호 재설정 완료 뷰셋 """
     permission_classes = [AllowAny]
@@ -282,6 +284,7 @@ class PasswordResetConfirmViewSet(viewsets.GenericViewSet):
             logger.error(f"서버 오류 발생: {str(e)}")
             return Response({"success": False, "message": f"서버 오류: {str(e)}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class PasswordResetCheckViewSet(viewsets.GenericViewSet):
     """ 비밀번호 재설정 코드 확인 뷰셋 """
@@ -340,12 +343,14 @@ class ListUsersView(generics.ListAPIView):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
 
+
 class UserDetailView(generics.RetrieveAPIView):
     """단일 사용자 정보 조회 API"""
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
     lookup_field = 'user_id'  # UUID 필드를 사용하여 조회
+
 
 class UpdateUserInfoView(generics.RetrieveUpdateAPIView):
     """사용자 정보 조회/변경 API"""
@@ -373,9 +378,6 @@ class UpdateUserInfoView(generics.RetrieveUpdateAPIView):
             'data': serializer.data
         })
 
-# class FollowView(generics.GenericAPIView):
-#     """팔로잉/팔로워 기능 API"""
-#     # 팔로잉/팔로워 로직 구현
 
 class PregnancyViewSet(viewsets.ModelViewSet):
     serializer_class = PregnancySerializer
@@ -398,6 +400,7 @@ class PregnancyViewSet(viewsets.ModelViewSet):
     #         {"message": "등록된 임신 정보가 없습니다."},
     #         status=status.HTTP_404_NOT_FOUND
     #     )
+
 
 class KakaoLoginCallbackView(APIView):
     """
@@ -511,6 +514,7 @@ class KakaoLoginCallbackView(APIView):
         redirect_url = f"{frontend_redirect_uri}?{query_string}"
 
         return HttpResponseRedirect(redirect_url)
+
 
 class NaverLoginCallbackView(APIView):
     """
@@ -699,6 +703,7 @@ class NaverLoginCallbackView(APIView):
             import traceback
             print(traceback.format_exc())
             return Response({'error': f'네이버 로그인 처리 중 오류 발생: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class GoogleLoginCallbackView(APIView):
     """
@@ -908,6 +913,7 @@ class GoogleLoginCallbackView(APIView):
             redirect_url = f"{frontend_redirect_uri}?error=처리_중_오류_발생"
             return HttpResponseRedirect(redirect_url)
 
+
 class FindUsernameAPIView(GenericAPIView):
     """ 일반 로그인 사용자 아이디 찾기"""
     permission_classes = [permissions.AllowAny]  # 인증 없이 사용 가능
@@ -921,3 +927,61 @@ class FindUsernameAPIView(GenericAPIView):
             return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FollowUnfollowView(GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_following_user(self, name=None):
+        """ name을 이용하여 사용자 객체를 가져옴 """
+        if name:
+            try:
+                return User.objects.get(name=name)
+            except User.DoesNotExist:
+                return None
+        return None
+
+    def post(self, request, name=None):
+        """ 팔로우 기능 """
+        following_user = self.get_following_user(name)
+        follower = request.user
+
+        if not following_user:
+            return Response({"error": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+
+        if follower == following_user:
+            return Response({"error": "자기 자신을 팔로우할 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        follow, created = Follow.objects.get_or_create(follower=follower, following=following_user)
+        if created:
+            return Response({"message": f"{following_user.name} 님을 팔로우했습니다."},
+                            status=status.HTTP_201_CREATED)
+        return Response({"message": "이미 팔로우 중입니다."}, status=status.HTTP_200_OK)
+
+    def delete(self, request, name=None):
+        """ 언팔로우 기능 """
+        following_user = self.get_following_user(name)
+        follower = request.user
+
+        # 팔로우 관계가 존재하는지 확인 후 삭제
+        try:
+            follow = Follow.objects.get(follower=follower, following=following_user)
+            follow.delete()
+            return Response({"message": f"{following_user.name} 님을 언팔로우했습니다."}, status=status.HTTP_200_OK)
+        except Follow.DoesNotExist:
+            return Response({"error": f"{following_user.name} 님을 팔로우하지 않았습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SharedInfoView(generics.ListAPIView):
+    """ 팔로우한 사용자들의 공유 정보 조회 """
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request, *args, **kwargs):
+        following_users = request.user.following.all().values_list("following", flat=True)
+        shared_data = User.objects.filter(id__in=following_users).values("username", "shared_info")
+        return Response({"shared_info": list(shared_data)}, status=status.HTTP_200_OK)
+
+
+
+
+
