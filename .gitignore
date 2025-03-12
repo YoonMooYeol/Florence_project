@@ -141,6 +141,7 @@ ENV/
 env.bak/
 venv.bak/
 myenv
+wsl_venv/
 
 # Spyder project settings
 .spyderproject
