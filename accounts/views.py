@@ -18,7 +18,7 @@ from django.contrib.auth.hashers import get_random_string
 from django.http import HttpResponseRedirect, HttpResponse
 from django.contrib.auth import authenticate
 from django.conf import settings
-from django.core.mail import get_connection
+from django.core.mail import get_connection, EmailMessage
 from django.core.cache import cache
 
 from django.core.mail import send_mail
@@ -78,7 +78,7 @@ class RegisterSendEmailView(APIView):
 
         # 이메일 전송
         send_mail(
-            subject="[Touch_Moms] 이메일 인증 코드 안내",
+            subject="[핥빝] 이메일 인증 코드 안내",
             message=f"안녕하세요.\n인증 코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[email],
@@ -296,7 +296,7 @@ class PasswordResetCheckViewSet(viewsets.GenericViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        code = serializer.validated_data['reset_code']  # 'reset_code'로 수정
+        code = serializer.validated_data['reset_code']
 
         # 코드로 사용자 탐색
         user = User.objects.filter(reset_code=code).first()  # User 객체 조회
