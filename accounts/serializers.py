@@ -191,10 +191,10 @@ class RegisterEmailSerializer(serializers.Serializer):
         return value
 
 
-class FollowSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Follow
-        fields = ['following', 'following', 'created_at']
+# class FollowSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Follow
+#         fields = ['following', 'following', 'created_at']
 
 
 
