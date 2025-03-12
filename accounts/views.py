@@ -77,10 +77,9 @@ class RegisterSendEmailView(APIView):
         # 이메일 전송
         email = EmailMessage(
             subject="[핥빝] 이메일 인증 코드 안내",
-            message=f"안녕하세요.\n인증 코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
+            body=f"안녕하세요.\n인증 코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
-            fail_silently=False,
+            to=[email]
         )
         email.send(fail_silently=False)
 
