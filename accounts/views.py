@@ -21,8 +21,6 @@ from django.conf import settings
 from django.core.mail import get_connection, EmailMessage
 from django.core.cache import cache
 
-from django.core.mail import send_mail
-
 from .serializers import(
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
     PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer,
@@ -77,13 +75,14 @@ class RegisterSendEmailView(APIView):
         cache.set(f"email_code_{email}", code, timeout=600)
 
         # 이메일 전송
-        send_mail(
+        email = EmailMessage(
             subject="[핥빝] 이메일 인증 코드 안내",
             message=f"안녕하세요.\n인증 코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[email],
             fail_silently=False,
         )
+        email.send(fail_silently=False)
 
         return Response(
             {"success": True, "message": "인증 코드가 이메일로 전송되었습니다."},
@@ -195,7 +194,7 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
 
 
         # 사용자 확인
-        user = User.objects.get(email__iexact=email)
+        user = User.objects.get(email=email)
 
         if not user:
             return Response({"success": False, "message": "해당 이메일의 사용자가 없습니다."},
@@ -237,20 +236,17 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
                 password=config['HOST_PASSWORD'],
 
             )
-            email_message = EmailMessage(
+            email = EmailMessage(
                 subject="[Touch_Moms] 비밀번호 재설정 코드 안내",
                 body=f"안녕하세요\n비밀번호 재설정 인증코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
                 from_email=config['HOST_USER'],
                 to=[recipient_email],
                 connection=connection
             )
-
-            email_message.send(fail_silently=False)
-
+            email.send(fail_silently=False)
+            return {"success": True, "message": "이메일이 성공적으로 전송되었습니다."}
         except Exception as e:
-            logger.error(f"이메일 전송 실패: {str(e)}")
-            raise Exception(f"이메일 전송 실패: {str(e)}")
-
+            raise Exception(f"이메일 전송 중 오류 발생: {str(e)}")
 
 class PasswordResetConfirmViewSet(viewsets.GenericViewSet):
     """ 비밀번호 재설정 완료 뷰셋 """

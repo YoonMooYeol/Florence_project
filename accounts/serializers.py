@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Pregnancy
+from .models import User, Pregnancy, Follow
 from django.contrib.auth.password_validation import validate_password
 
 class UserSerializer(serializers.ModelSerializer):
@@ -190,6 +190,11 @@ class RegisterEmailSerializer(serializers.Serializer):
             raise serializers.ValidationError("이메일을 입력해주세요.")
         return value
 
+
+# class FollowSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Follow
+#         fields = ['following', 'following', 'created_at']
 
 
 
