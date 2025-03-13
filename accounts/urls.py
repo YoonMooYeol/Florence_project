@@ -7,7 +7,7 @@ from .views import (
     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetViewSet,
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
     NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView, RegisterSendEmailView,
-    RegisterCheckView
+    RegisterCheckView, FollowUnfollowView
                     )
 
 
@@ -42,4 +42,6 @@ urlpatterns = [
 
     path('send_register/', RegisterSendEmailView.as_view(), name='register-send'),
     path('check_register/', RegisterCheckView.as_view(), name='check-register'),
+
+    path("follow/<str:name>/", FollowUnfollowView.as_view(), name="follow-name"),
 ]
