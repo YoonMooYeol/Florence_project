@@ -150,13 +150,19 @@ class EmailVerification(models.Model):
         return (now() - self.created_at).seconds > 300  # 300초 = 5분
 
 
-# class Follow(models.Model):
-#     """ follower - following 관계 저장 """
-#     follower = models.ForeignKey(User, on_delete=models.CASCADE, related_name='following')
-#     following = models.ForeignKey(User, on_delete=models.CASCADE, related_name='followers')
-#     created_at = models.DateTimeField(auto_now_add=True)
-#
-#     class Meta:
-#         unique_together = ('follower', 'following') # 중복 팔로우 방지
+class Follow(models.Model):
+    """ follower - following 관계 저장 """
+    name = models.CharField(max_length=255, primary_key=True, blank=False, null=False)
+    follower = models.ForeignKey(User, on_delete=models.CASCADE, related_name='following')
+    following = models.ForeignKey(User, on_delete=models.CASCADE, related_name='followers')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('follower', 'following') # 중복 팔로우 방지
+
+    def __str__(self):
+        return f"{self.follower} -> {self.following}"
+
+
 
 
