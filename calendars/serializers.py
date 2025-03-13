@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Event, DailyConversationSummary
+from .models import Event, DailyConversationSummary, BabyDiary
 from llm.models import LLMConversation
 
 class EventSerializer(serializers.ModelSerializer):
@@ -41,4 +41,19 @@ class DailyConversationSummaryCreateSerializer(serializers.ModelSerializer):
         summary.conversations.set(conversations)
         
         return summary
+
+class BabyDiarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BabyDiary
+        fields = '__all__'
+        read_only_fields = ['diary_id', 'user', 'created_at', 'updated_at']
+
+class BabyDiaryCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BabyDiary
+        fields = ['pregnancy', 'content', 'diary_date']
+        read_only_fields = ['diary_id', 'user', 'created_at', 'updated_at']
+        
+    def create(self, validated_data):
+        return BabyDiary.objects.create(**validated_data)
 

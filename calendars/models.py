@@ -74,3 +74,34 @@ class DailyConversationSummary(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.summary_date} 대화 요약"
+
+
+class BabyDiary(models.Model):
+    """아기 일기 모델 - 태교용 일기"""
+    diary_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='baby_diaries',
+        verbose_name='사용자'
+    )
+    pregnancy = models.ForeignKey(
+        Pregnancy,
+        on_delete=models.CASCADE,
+        related_name='baby_diaries',
+        verbose_name='임신 정보',
+        null=True, blank=True
+    )
+    content = models.TextField(verbose_name='아기 일기 내용')
+    diary_date = models.DateField(verbose_name='일기 날짜')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = '아기 일기'
+        verbose_name_plural = '아기 일기 목록'
+        ordering = ['-diary_date']
+        unique_together = ['user', 'diary_date']  # 사용자별로 날짜당 하나의 일기만 존재
+
+    def __str__(self):
+        return f"{self.user.username} - {self.diary_date} 아기 일기"

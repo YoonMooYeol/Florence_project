@@ -3,12 +3,14 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django_filters import rest_framework as filters
-from .models import Event, DailyConversationSummary
+from .models import Event, DailyConversationSummary, BabyDiary
 from .serializers import (
     EventSerializer, 
     EventDetailSerializer,
     DailyConversationSummarySerializer,
-    DailyConversationSummaryCreateSerializer
+    DailyConversationSummaryCreateSerializer,
+    BabyDiarySerializer,
+    BabyDiaryCreateSerializer
 )
 from llm.models import LLMConversation
 import logging
@@ -16,6 +18,7 @@ from datetime import datetime, timedelta
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
+from django.http import Http404
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
@@ -261,3 +264,86 @@ class DailyConversationSummaryViewSet(viewsets.ModelViewSet):
                 {"error": f"요약 생성 중 오류가 발생했습니다: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+class BabyDiaryFilter(filters.FilterSet):
+    start_date = filters.DateFilter(field_name='diary_date', lookup_expr='gte')
+    end_date = filters.DateFilter(field_name='diary_date', lookup_expr='lte')
+    
+    class Meta:
+        model = BabyDiary
+        fields = ['diary_date', 'user', 'pregnancy', 'start_date', 'end_date']
+
+
+class BabyDiaryViewSet(viewsets.ModelViewSet):
+    """
+    아기 일기 관리 ViewSet
+    
+    list: 아기 일기 목록 조회 (월별/일별 필터링 가능)
+      - ?start_date=2023-01-01&end_date=2023-01-31 형식으로 월별 조회 가능
+      - ?diary_date=2023-01-01 형식으로 특정 날짜 조회 가능
+    retrieve: 특정 날짜의 아기 일기 상세 조회
+    create: 아기 일기 생성 (하루에 하나씩만 생성 가능)
+    update: 아기 일기 수정
+    destroy: 아기 일기 삭제
+    """
+    permission_classes = [IsAuthenticated]
+    filterset_class = BabyDiaryFilter
+    lookup_field = 'diary_date'  # URL에서 날짜로 조회할 수 있도록 설정
+    
+    def get_queryset(self):
+        # 쿼리 파라미터 로깅
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        diary_date = self.request.query_params.get('diary_date')
+        
+        logger.info(f"Filtering baby diaries with start_date: {start_date}, end_date: {end_date}, diary_date: {diary_date}")
+        
+        # 사용자 본인의 아기 일기만 조회
+        queryset = BabyDiary.objects.filter(
+            user=self.request.user
+        )
+        
+        # 특정 날짜 필터링 (일별 조회)
+        if diary_date:
+            queryset = queryset.filter(diary_date=diary_date)
+            logger.info(f"Filtering by exact diary_date: {diary_date}")
+        # 날짜 범위 필터링 (월별 조회)
+        else:
+            # 명시적으로 날짜 필터링 추가
+            if start_date:
+                queryset = queryset.filter(diary_date__gte=start_date)
+            if end_date:
+                queryset = queryset.filter(diary_date__lte=end_date)
+        
+        logger.info(f"Filtered baby diary queryset count: {queryset.count()}")
+        return queryset
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return BabyDiaryCreateSerializer
+        return BabyDiarySerializer
+    
+    def perform_create(self, serializer):
+        # 사용자 자동 설정
+        serializer.save(user=self.request.user)
+        
+    def get_object(self):
+        """
+        diary_date를 기준으로 객체를 조회하는 로직
+        URL에서 날짜로 조회할 수 있도록 오버라이드
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # lookup_url_kwarg가 설정되지 않은 경우 기본값 사용
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        
+        # URL에서 전달된 날짜 가져오기
+        diary_date = self.kwargs[lookup_url_kwarg]
+        
+        try:
+            # 사용자와 날짜로 객체 필터링
+            obj = queryset.get(user=self.request.user, diary_date=diary_date)
+            self.check_object_permissions(self.request, obj)
+            return obj
+        except BabyDiary.DoesNotExist:
+            raise Http404("해당 날짜의 아기 일기가 존재하지 않습니다.")
