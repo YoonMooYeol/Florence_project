@@ -7,7 +7,7 @@ from .views import (
     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetViewSet,
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
     NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView, RegisterSendEmailView,
-    RegisterCheckView, FollowUnfollowView, SharedInfoView
+    RegisterCheckView, FollowUnfollowView
                     )
 
 

@@ -58,7 +58,7 @@ class RegisterSendEmailView(APIView):
         # 이메일 형식 검증
         if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
             return Response(
-                {"success": False, "message": "올바른 이메일 주소를 입력하세요."},
+                {"success": True, "message": "올바른 이메일 주소를 입력하세요."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -971,15 +971,6 @@ class FollowUnfollowView(GenericAPIView):
         except Follow.DoesNotExist:
             return Response({"error": f"{following_user.name} 님을 팔로우하지 않았습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
-
-class SharedInfoView(generics.ListAPIView):
-    """ 팔로우한 사용자들의 공유 정보 조회 """
-    permission_classes = [IsAuthenticated]
-
-    def list(self, request, *args, **kwargs):
-        following_users = request.user.following.all().values_list("following", flat=True)
-        shared_data = User.objects.filter(id__in=following_users).values("username", "shared_info")
-        return Response({"shared_info": list(shared_data)}, status=status.HTTP_200_OK)
 
 
 
