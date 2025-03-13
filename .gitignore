@@ -184,3 +184,6 @@ cython_debug/
 # Django migrations
 */migrations/*.py
 !*/migrations/__init__.py
+
+celerybeat-schedule.db
+dump.rdb
