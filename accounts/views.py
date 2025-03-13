@@ -12,13 +12,13 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
-from rest_framework.generics import GenericAPIView, get_object_or_404
+from rest_framework.generics import GenericAPIView
 
 from django.contrib.auth.hashers import get_random_string
-from django.http import HttpResponseRedirect, HttpResponse
+from django.http import HttpResponseRedirect
 from django.contrib.auth import authenticate
 from django.conf import settings
-from django.core.mail import get_connection, EmailMessage, EmailMultiAlternatives
+from django.core.mail import get_connection, EmailMultiAlternatives
 from django.core.cache import cache
 
 from .serializers import(
