@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Pregnancy
+from .models import User, Pregnancy, Follow
 from django.contrib.auth.password_validation import validate_password
 
 class UserSerializer(serializers.ModelSerializer):
@@ -72,6 +72,7 @@ class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
 
+
 class PregnancySerializer(serializers.ModelSerializer):
     class Meta:
         model = Pregnancy
@@ -90,13 +91,15 @@ class PregnancySerializer(serializers.ModelSerializer):
             if value < date.today():
                 raise serializers.ValidationError("출산 예정일은 오늘 이후여야 합니다.")
         return value
-    
+
+
 class UserUpdateSerializer(serializers.ModelSerializer):
     """사용자 정보 수정용 시리얼라이저"""
     class Meta:
         model = User
         fields = ('username', 'name', 'email', 'phone_number', 'gender', 'address', 'is_pregnant')  # 실제 모델에 있는 필드들만 포함
         read_only_fields = ('user_id', 'email')  # 수정 불가능한 필드. user_id는 자동으로 생성되므로 수정 불가능
+
 
 class ChangePasswordSerializer(serializers.Serializer):
     """비밀번호 변경 시리얼라이저"""
@@ -125,6 +128,7 @@ class PasswordResetSerializer(serializers.Serializer):
         if not user:
             raise serializers.ValidationError("해당 이메일의 사용자가 없습니다.")
         return value
+
 
 class PasswordResetCheckSerializer(serializers.Serializer):
     """ 비밀번호 찾기 - 인증 확인 """
@@ -191,10 +195,15 @@ class RegisterEmailSerializer(serializers.Serializer):
         return value
 
 
-# class FollowSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Follow
-#         fields = ['following', 'following', 'created_at']
+class FollowUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Follow
+        fields = ['follower', 'following', 'created_at']
+
+
+
+
+
 
 
 
