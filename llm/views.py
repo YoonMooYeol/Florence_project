@@ -756,3 +756,123 @@ user information:
                 {"error": "서버 오류가 발생했습니다. 나중에 다시 시도해주세요."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+class FlorenceAgentView(generics.GenericAPIView):
+    """
+    Florence 임신정보 어시스턴트 API
+    
+    이 API는 Florence 에이전트를 호출하여 임신 관련 질문에 답변합니다.
+    에이전트는 RAG, 웹 검색, 대화 기능을 결합하여 임신 관련 정보를 제공합니다.
+    """
+    permission_classes = [AllowAny]
+    
+    def get_serializer_class(self):
+        # POST 요청시 사용할 시리얼라이저
+        return LLMAgentQuerySerializer
+    
+    def post(self, request):
+        """Florence 에이전트 API 엔드포인트"""
+        try:
+            # 요청 데이터 검증
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            # 검증된 데이터 추출
+            user_id = serializer.validated_data.get('user_id')
+            query_text = serializer.validated_data.get('query_text')
+            baby_name = serializer.validated_data.get('baby_name', '아기')
+            pregnancy_week = serializer.validated_data.get('pregnancy_week', 0)
+            thread_id = serializer.validated_data.get('thread_id', 'default_thread')
+            
+            # 로그 출력
+            logger.info(f"Florence 에이전트 질문: '{query_text}' (user_id: {user_id}, pregnancy_week: {pregnancy_week})")
+            
+            # Florence 에이전트 초기화
+            from .agent import Florence, chat_with_florence
+            
+            # 에이전트 호출
+            # 이미 구현된 함수를 사용
+            result = chat_with_florence(
+                message=query_text,
+                user_id=user_id,
+                thread_id=thread_id,
+                pregnancy_week=pregnancy_week,
+                stream=False
+            )
+            
+            # 응답 텍스트 추출
+            response_text = result.get('response', '')
+            
+            # 응답 저장 (채팅방에 직접 저장)
+            try:
+                user = User.objects.get(user_id=user_id)
+                
+                # thread_id가 채팅방 ID인 경우 (UUID 형식)
+                if thread_id != 'default_thread':
+                    try:
+                        from uuid import UUID
+                        chat_id = UUID(thread_id)  # 문자열을 UUID로 변환
+                        
+                        # 채팅방 조회
+                        from .models import ChatManager
+                        chat_room = ChatManager.objects.filter(chat_id=chat_id).first()
+                        
+                        if chat_room:
+                            # 해당 채팅방에 메시지 저장
+                            conversation = LLMConversation.objects.create(
+                                user=user,
+                                chat_room=chat_room,
+                                query=query_text,
+                                response=response_text,
+                                user_info={
+                                    "name": user_id,
+                                    "baby_name": baby_name,
+                                    "pregnancy_week": pregnancy_week
+                                }
+                            )
+                            logger.info(f"메시지가 채팅방 {chat_id}에 저장되었습니다.")
+                            return Response({
+                                "response": response_text,
+                                "agent_type": "Florence",
+                                "pregnancy_week": pregnancy_week,
+                                "conversation_id": conversation.id
+                            }, status=status.HTTP_200_OK)
+                    except (ValueError, TypeError):
+                        # UUID 변환 실패 시 기본 저장 로직 사용
+                        logger.warning(f"thread_id {thread_id}를 UUID로 변환할 수 없습니다.")
+                
+                # 채팅방이 없거나 thread_id가 유효하지 않은 경우 (기본 저장)
+                conversation = LLMConversation.objects.create(
+                    user=user,
+                    query=query_text,
+                    response=response_text,
+                    user_info={
+                        "name": user_id,
+                        "baby_name": baby_name,
+                        "pregnancy_week": pregnancy_week
+                    }
+                )
+                
+                return Response({
+                    "response": response_text,
+                    "agent_type": "Florence",
+                    "pregnancy_week": pregnancy_week,
+                    "conversation_id": conversation.id
+                }, status=status.HTTP_200_OK)
+                
+            except Exception as save_error:
+                logger.warning(f"응답 저장 중 오류 (무시됨): {str(save_error)}")
+                # 저장 실패해도 응답은 정상적으로 반환
+                return Response({
+                    "response": response_text,
+                    "agent_type": "Florence",
+                    "pregnancy_week": pregnancy_week
+                }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Florence 에이전트 API 오류: {str(e)}")
+            logger.exception("상세 오류:")
+            return Response(
+                {"error": "서버 오류가 발생했습니다. 나중에 다시 시도해주세요."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

@@ -39,6 +39,9 @@ urlpatterns = [
     # 새로운 LLM 에이전트 API
     path('agent/', views.LLMAgentQueryView.as_view(), name='llm_agent_query'),
     
+    # Florence 에이전트 API
+    path('florence/', views.FlorenceAgentView.as_view(), name='florence_agent'),
+    
     # 채팅방 관련 API
     path('chat/rooms/', views.ChatRoomListCreateView.as_view(), name='chat_rooms'),
     path('chat/rooms/<uuid:chat_id>/', views.ChatRoomDetailView.as_view(), name='chat_room_detail'),
