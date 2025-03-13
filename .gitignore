@@ -182,5 +182,9 @@ cython_debug/
 .DS_Store
 
 # Django migrations
-*/migrations/*.py
-!*/migrations/__init__.py
+*/migrations/0*.py
+# */migrations/__init__.py
+
+celerybeat-schedule.bak
+celerybeat-schedule.dat
+celerybeat-schedule.dir
