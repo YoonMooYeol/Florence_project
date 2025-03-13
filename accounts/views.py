@@ -12,13 +12,13 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
-from rest_framework.generics import GenericAPIView, get_object_or_404
+from rest_framework.generics import GenericAPIView
 
 from django.contrib.auth.hashers import get_random_string
-from django.http import HttpResponseRedirect, HttpResponse
+from django.http import HttpResponseRedirect
 from django.contrib.auth import authenticate
 from django.conf import settings
-from django.core.mail import get_connection, EmailMessage
+from django.core.mail import get_connection, EmailMultiAlternatives
 from django.core.cache import cache
 
 from .serializers import(
@@ -73,14 +73,45 @@ class RegisterSendEmailView(APIView):
         # 캐시에도 인증 코드 저장 (10분)
         cache.set(f"email_code_{email}", code, timeout=600)
 
-        # 이메일 전송
-        email = EmailMessage(
-            subject="[핥빝] 이메일 인증 코드 안내",
+        # HTML 형식의 이메일 내용 추가
+        html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+            <p style="font-size: 20px;">안녕하세요,</p>
+            <p style="font-size: 18px;">인증 코드는 아래와 같습니다.</p>
+    
+            <div style="
+                border: 2px solid #4CAF50;
+                padding: 15px;
+                display: inline-block;
+                font-size: 24px;
+                font-weight: bold;
+                background-color: #f3f3f3;
+                color: #333;
+                border-radius: 5px;
+                margin-top: 10px;
+            ">
+                {code}
+            </div>
+    
+            <p style="font-size: 14px; margin-top: 20px; color: #888;">
+                10분 안에 인증을 완료해주세요.
+            </p>
+        </body>
+        </html>
+        """
+
+        # EmailMultiAlternatives 객체 생성 (HTML 형식 추가)
+        email_message = EmailMultiAlternatives(
+            subject="[누리달] 이메일 인증 코드 안내",
             body=f"안녕하세요.\n인증 코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
             from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[email]
+            to=[email],
         )
-        email.send(fail_silently=False)
+        email_message.attach_alternative(html_content, "text/html")  # HTML로 변환
+
+        # 이메일 전송
+        email_message.send(fail_silently=False)
 
         return Response(
             {"success": True, "message": "인증 코드가 이메일로 전송되었습니다."},
@@ -236,15 +267,47 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
                 password=config['HOST_PASSWORD'],
 
             )
-            email = EmailMessage(
-                subject="[Touch_Moms] 비밀번호 재설정 코드 안내",
+            html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+            <p style="font-size: 20px;">안녕하세요,</p>
+            <p style="font-size: 18px;">비밀번호 재설정 인증코드는 아래와 같습니다.</p>
+
+            <div style="
+                border: 2px solid #4CAF50;
+                padding: 15px;
+                display: inline-block;
+                font-size: 24px;
+                font-weight: bold;
+                background-color: #f3f3f3;
+                color: #333;
+                border-radius: 5px;
+                margin-top: 10px;
+            ">
+                {code}
+            </div>
+
+            <p style="font-size: 14px; margin-top: 20px; color: #888;">
+                10분 안에 인증을 완료해주세요.
+            </p>
+        </body>
+        </html>
+        """
+
+        # EmailMultiAlternatives 객체 생성
+            email = EmailMultiAlternatives(
+                subject="[누리달] 비밀번호 재설정 코드 안내",
                 body=f"안녕하세요\n비밀번호 재설정 인증코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
                 from_email=config['HOST_USER'],
                 to=[recipient_email],
-                connection=connection
+                connection=connection,
             )
+            email.attach_alternative(html_content, "text/html")  # HTML로 변환
+
+            # 이메일 전송
             email.send(fail_silently=False)
             return {"success": True, "message": "이메일이 성공적으로 전송되었습니다."}
+
         except Exception as e:
             raise Exception(f"이메일 전송 중 오류 발생: {str(e)}")
 
