@@ -5,6 +5,7 @@ import random
 import re
 from datetime import datetime
 
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import generics, status, viewsets, permissions
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -81,35 +82,25 @@ class RegisterCheckView(APIView):
         code = request.data.get("code", "").strip()
 
         if not email or not code:
-            return Response(
-                {"success": False, "message": "이메일과 인증 코드를 입력하세요."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"success": False, "message": "이메일과 인증 코드를 입력하세요."},
+                status=status.HTTP_400_BAD_REQUEST)
 
         if not EmailUtils.validate_email(email):
-            return Response(
-                {"success": False, "message": EmailUtils.EMAIL_INVALID_ERROR},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"success": False, "message": EmailUtils.EMAIL_INVALID_ERROR},
+                status=status.HTTP_400_BAD_REQUEST)
 
         saved_code = EmailUtils.get_verification_code(email)  # 저장된 코드 가져오기
 
         if not saved_code:
-            return Response(
-                {"success": False, "message": EmailUtils.CODE_EXPIRED_ERROR},  # 만료된 경우
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"success": False, "message": EmailUtils.CODE_EXPIRED_ERROR},  # 만료된 경우
+                status=status.HTTP_400_BAD_REQUEST)
 
         if saved_code != code:
-            return Response(
-                {"success": False, "message": EmailUtils.CODE_INVALID_ERROR},  # 코드 불일치
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"success": False, "message": EmailUtils.CODE_INVALID_ERROR},  # 코드 불일치
+                status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(
-            {"success": True, "message": "이메일 인증이 완료되었습니다."},
-            status=status.HTTP_200_OK
-        )
+        return Response({"success": True, "message": "이메일 인증이 완료되었습니다."},
+            status=status.HTTP_200_OK)
 
 class LoginView(APIView):
     """로그인 API"""
@@ -236,7 +227,7 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
 
             )
             email = EmailMessage(
-                subject="[Touch_Moms] 비밀번호 재설정 코드 안내",
+                subject="[누리달] 💡비밀번호 재설정 인증 코드 안내 💡",
                 body=f"안녕하세요\n비밀번호 재설정 인증코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
                 from_email=config['HOST_USER'],
                 to=[recipient_email],
@@ -931,18 +922,18 @@ class FindUsernameAPIView(GenericAPIView):
 class FollowUnfollowView(GenericAPIView):
     permission_classes = [IsAuthenticated]
 
-    def get_following_user(self, name=None):
-        """ name을 이용하여 사용자 객체를 가져옴 """
-        if name:
+    def get_following_user(self, email=None):
+        """ 이메일을 이용하여 사용자 객체를 가져옴 """
+        if email:
             try:
-                return User.objects.get(name=name)
+                return User.objects.get(email=email)
             except User.DoesNotExist:
                 return None
         return None
 
-    def post(self, request, name=None):
+    def post(self, request, email=None):
         """ 팔로우 기능 """
-        following_user = self.get_following_user(name)
+        following_user = self.get_following_user(email)
         follower = request.user
 
         if not following_user:
@@ -957,9 +948,9 @@ class FollowUnfollowView(GenericAPIView):
                             status=status.HTTP_201_CREATED)
         return Response({"message": "이미 팔로우 중입니다."}, status=status.HTTP_200_OK)
 
-    def delete(self, request, name=None):
+    def delete(self, request, email=None):
         """ 언팔로우 기능 """
-        following_user = self.get_following_user(name)
+        following_user = self.get_following_user(email)
         follower = request.user
 
         # 팔로우 관계가 존재하는지 확인 후 삭제
@@ -968,8 +959,25 @@ class FollowUnfollowView(GenericAPIView):
             follow.delete()
             return Response({"message": f"{following_user.name} 님을 언팔로우했습니다."}, status=status.HTTP_200_OK)
         except Follow.DoesNotExist:
-            return Response({"error": f"{following_user.name} 님을 팔로우하지 않았습니다."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": f"{following_user.name} 님을 팔로우하지 않았습니다."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
+
+class SearchUserByEmailView(GenericAPIView):
+    """ 이메일로 사용자 검색 """
+    permission_classes = [permissions.AllowAny]  # [IsAuthenticated] 배포 전 교체
+
+    def get(self, request, *args, **kwargs):
+        email = request.query_params.get('email')
+        if not email:
+            return Response({"detail": "이메일을 작성해주세요."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.get(email=email)
+            serializer = UserSerializer(user)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return Response({"detail": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
 
 
 
