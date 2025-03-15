@@ -375,3 +375,11 @@ CELERY_BEAT_SCHEDULE = {
     #     'schedule': 30.0,
     # },
 }
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",  # ✅ 메모리 캐시 사용
+        "LOCATION": "unique-snowflake",
+        "TIMEOUT": 600,
+    }
+}

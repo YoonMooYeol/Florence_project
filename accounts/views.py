@@ -12,22 +12,22 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
-from rest_framework.generics import GenericAPIView, get_object_or_404
+from rest_framework.generics import GenericAPIView
 
 from django.contrib.auth.hashers import get_random_string
-from django.http import HttpResponseRedirect, HttpResponse
+from django.http import HttpResponseRedirect
 from django.contrib.auth import authenticate
 from django.conf import settings
 from django.core.mail import get_connection, EmailMessage
-from django.core.cache import cache
 
 from .serializers import(
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
     PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer,
 )
 from .models import User, Pregnancy, Follow
-from .models import EmailVerification
 from dotenv import load_dotenv
+
+from accounts.utils.email_utils import EmailUtils
 
 # .env 파일 로드
 load_dotenv()
@@ -50,42 +50,26 @@ class RegisterSendEmailView(APIView):
         email = request.data.get("email", "").strip().lower()
 
         if not email:
+            return Response({"success": False, "message": EmailUtils.EMAIL_NO_WRITE_ERROR},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if not EmailUtils.validate_email(email):
+            return Response({"success": False, "message": EmailUtils.EMAIL_INVALID_ERROR},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        code = EmailUtils.generate_verification_code()
+        EmailUtils.save_verification_code(email, code)
+
+        try:
+            EmailUtils.send_verification_email(email)
+        except Exception as e:
             return Response(
-                {"success": False, "message": "이메일을 입력하세요."},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"success": False, "message": f"이메일 전송 중 오류 발생: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # 이메일 형식 검증
-        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-            return Response(
-                {"success": True, "message": "올바른 이메일 주소를 입력하세요."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # 인증 코드 생성 (6자리 랜덤 숫자)
-        code = str(random.randint(100000, 999999))
-
-        # 기존 인증 코드 삭제 후 새 코드 저장
-        EmailVerification.objects.filter(email=email).delete()  # 기존 데이터 삭제
-        verification = EmailVerification(email=email, code=code)
-        verification.save()  # DB에 저장
-
-        # 캐시에도 인증 코드 저장 (10분)
-        cache.set(f"email_code_{email}", code, timeout=600)
-
-        # 이메일 전송
-        email = EmailMessage(
-            subject="[핥빝] 이메일 인증 코드 안내",
-            body=f"안녕하세요.\n인증 코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[email]
-        )
-        email.send(fail_silently=False)
-
-        return Response(
-            {"success": True, "message": "인증 코드가 이메일로 전송되었습니다."},
-            status=status.HTTP_200_OK,
-        )
+        return Response({"success": True, "message": "인증 코드가 전송되었습니다."},
+                        status=status.HTTP_200_OK)
 
 
 class RegisterCheckView(APIView):
@@ -93,24 +77,39 @@ class RegisterCheckView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        email = request.data.get("email")
-        code = request.data.get("code")
+        email = request.data.get("email", "").strip().lower()
+        code = request.data.get("code", "").strip()
 
         if not email or not code:
-            return Response({"message": "이메일과 인증 코드를 입력하세요."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"success": False, "message": "이메일과 인증 코드를 입력하세요."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # DB에서 이메일과 인증 코드 확인
-        try:
-            verification = EmailVerification.objects.get(email=email, code=code)
+        if not EmailUtils.validate_email(email):
+            return Response(
+                {"success": False, "message": EmailUtils.EMAIL_INVALID_ERROR},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            if verification.is_expired():
-                return Response({"message": "인증 코드가 만료되었습니다."}, status=status.HTTP_400_BAD_REQUEST)
+        saved_code = EmailUtils.get_verification_code(email)  # 저장된 코드 가져오기
 
-            return Response({"message": "이메일 인증 성공!"}, status=status.HTTP_200_OK)
+        if not saved_code:
+            return Response(
+                {"success": False, "message": EmailUtils.CODE_EXPIRED_ERROR},  # 만료된 경우
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        except EmailVerification.DoesNotExist:
-            return Response({"message": "잘못된 인증 코드입니다."}, status=status.HTTP_400_BAD_REQUEST)
+        if saved_code != code:
+            return Response(
+                {"success": False, "message": EmailUtils.CODE_INVALID_ERROR},  # 코드 불일치
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        return Response(
+            {"success": True, "message": "이메일 인증이 완료되었습니다."},
+            status=status.HTTP_200_OK
+        )
 
 class LoginView(APIView):
     """로그인 API"""
