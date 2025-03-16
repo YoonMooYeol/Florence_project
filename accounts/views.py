@@ -24,7 +24,7 @@ from django.core.mail import get_connection, EmailMessage
 from .serializers import (
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
     PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer,
-    PhotoSerializer,
+    PhotoSerializer, FollowUserSerializer
 )
 from .models import User, Pregnancy, Follow, Photo
 from dotenv import load_dotenv
@@ -922,6 +922,7 @@ class FindUsernameAPIView(GenericAPIView):
 
 class FollowUnfollowView(GenericAPIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = FollowUserSerializer
 
     def get_following_user(self, email=None):
         """ 이메일을 이용하여 사용자 객체를 가져옴 """
@@ -963,8 +964,14 @@ class FollowUnfollowView(GenericAPIView):
             return Response({"error": f"{following_user.name} 님을 팔로우하지 않았습니다."},
                             status=status.HTTP_400_BAD_REQUEST)
 
+    def get(self, request):
+        """ 내가 팔로우한 사용자 목록 조회 """
+        following_users = User.objects.filter(followers__follower=request.user)  # 내가 팔로우한 유저들
+        serializer = self.get_serializer(following_users, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-class SearchUserByEmailView(GenericAPIView):
+
+class RetrieveUserByEmailView(GenericAPIView):
     """ 이메일로 사용자 검색 """
     permission_classes = [permissions.AllowAny]  # [IsAuthenticated] 배포 전 교체
 
@@ -975,8 +982,8 @@ class SearchUserByEmailView(GenericAPIView):
 
         try:
             user = User.objects.get(email=email)
-            serializer = UserSerializer(user)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            user_data = {'name': user.name}
+            return Response(user_data, status=status.HTTP_200_OK)
         except User.DoesNotExist:
             return Response({"detail": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
 
