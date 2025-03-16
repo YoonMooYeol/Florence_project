@@ -383,3 +383,12 @@ CACHES = {
         "TIMEOUT": 600,
     }
 }
+
+# Media
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 이미지 파일 저장 경로
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
