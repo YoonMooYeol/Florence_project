@@ -191,3 +191,5 @@ celerybeat-schedule.dir
 
 celerybeat-schedule.db
 dump.rdb
+
+media/

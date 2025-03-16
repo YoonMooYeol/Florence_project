@@ -5,11 +5,11 @@ import random
 import re
 from datetime import datetime
 
-from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import generics, status, viewsets, permissions
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
+from rest_framework.viewsets import ModelViewSet
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
@@ -21,11 +21,12 @@ from django.contrib.auth import authenticate
 from django.conf import settings
 from django.core.mail import get_connection, EmailMessage
 
-from .serializers import(
+from .serializers import (
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
     PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer,
+    PhotoSerializer,
 )
-from .models import User, Pregnancy, Follow
+from .models import User, Pregnancy, Follow, Photo
 from dotenv import load_dotenv
 
 from accounts.utils.email_utils import EmailUtils
@@ -978,6 +979,37 @@ class SearchUserByEmailView(GenericAPIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
         except User.DoesNotExist:
             return Response({"detail": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+
+
+class PhotoViewSet(ModelViewSet):
+    """ 프로필 사진 등록/조회/수정/삭제 """
+    permission_classes = [IsAuthenticated]
+    serializer_class = PhotoSerializer
+
+
+    def get_queryset(self):
+        """ 현재 로그인한 사용자의 사진만 필터링 """
+        return Photo.objects.filter(user=self.request.user, category="profile")
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class DiaryPhotoViewSet(ModelViewSet):
+    """ 일기 사진 등록/조회/수정/삭제 """
+    permission_classes = [IsAuthenticated]
+    serializer_class = PhotoSerializer
+
+    def get_queryset(self):
+        """ 현재 로그인한 사용자의 태교일기 사진만 필터링 """
+        return Photo.objects.filter(user=self.request.user, category="diary")
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+
+
 
 
 
