@@ -378,7 +378,7 @@ CELERY_BEAT_SCHEDULE = {
 
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",  # ✅ 메모리 캐시 사용
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
         "LOCATION": "unique-snowflake",
         "TIMEOUT": 600,
     }
