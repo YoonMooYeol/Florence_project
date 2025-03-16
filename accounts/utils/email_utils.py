@@ -58,13 +58,47 @@ class EmailUtils:
         code = EmailUtils.generate_verification_code()
         EmailUtils.save_verification_code(email, code)
 
-        email = EmailMessage(
-            subject="[누리달] 💡이메일 인증 코드 안내 💡",
-            body=f"안녕하세요.\n인증 코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
+        subject = "[누리달] 💡이메일 인증 코드 안내 💡"
+
+        body = f"""
+        <html>
+<body style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+    <h2 style="color: #333;">안녕하세요.</h2>
+    <p style="font-size: 16px; color: #555;">아래 인증 코드를 입력하여 이메일 인증을 완료해주세요.</p>
+    
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+            <td align="center">
+                <div style="background-color: #f0f8ff; padding: 15px; border-radius: 10px; width: 100%; max-width: 300px;">
+                    <span style="font-size: 24px; font-weight: bold; color: #4682B4; white-space: nowrap;">{code}</span>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <p style="font-size: 14px; color: #777; margin-top: 10px;">인증 코드는 10분 동안 유효합니다.</p>
+
+    <p style="font-size: 14px; color: #999;">
+        문의 사항이 있으시면 
+<a href="mailto:noorimoon2025@gmail.com" style="color: #4682B4; text-decoration: none;">noorimoon2025@gmail.com</a>
+        으로 연락 부탁드려요 :)
+    </p>
+    
+    <p style="font-size: 14px; color: #999;">감사합니다.</p>
+</body>
+</html>
+
+    """
+
+        email_message = EmailMessage(
+            subject=subject,
+            body=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[email]
         )
-        email.send(fail_silently=False)
+
+        email_message.content_subtype = "html"
+        email_message.send(fail_silently=False)
 
     @staticmethod
     def send_password_reset_email(email):
@@ -75,13 +109,48 @@ class EmailUtils:
         code = EmailUtils.generate_verification_code()
         EmailUtils.save_verification_code(email, code)
 
-        email = EmailMessage(
-            subject="[누리달] 💡비밀번호 재설정 인증 코드 안내 💡",
-            body="안녕하세요.\n인증 코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
+        subject = "[누리달] 💡비밀번호 재설정 인증 코드 안내 💡"
+
+        body = f"""
+        <html>
+<body style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+    <h2 style="color: #333;">안녕하세요.</h2>
+    <p style="font-size: 16px; color: #555;">아래 인증 코드를 입력하여 비밀번호 재설정을 완료해주세요.</p>
+    
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+            <td align="center">
+                <div style="background-color: #f0f8ff; padding: 15px; border-radius: 10px; width: 100%; max-width: 300px;">
+                    <span style="font-size: 24px; font-weight: bold; color: #4682B4; white-space: nowrap;">{code}</span>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <p style="font-size: 14px; color: #777; margin-top: 10px;">인증 코드는 10분 동안 유효합니다.</p>
+
+    <p style="font-size: 14px; color: #999;">
+        문의 사항이 있으시면 
+<a href="mailto:noorimoon2025@gmail.com" style="color: #4682B4; text-decoration: none;">noorimoon2025@gmail.com</a>
+        으로 연락 부탁드려요 :)
+    </p>
+    
+    <p style="font-size: 14px; color: #999;">감사합니다.</p>
+</body>
+</html>
+
+    """
+
+        email_message = EmailMessage(
+            subject=subject,
+            body=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[email]
         )
-        email.send(fail_silently=False)
+
+        email_message.content_subtype = "html"
+        email_message.send(fail_silently=False)
+
 
 
 
