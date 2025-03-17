@@ -207,8 +207,9 @@ class PhotoSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True)
     class Meta:
         model = Photo
-        fields = ['id', 'user', 'image', 'category', 'created_at', 'updated_at']
+        fields = ['id', 'user', 'image', 'category', 'created_at']
         read_only_fields = ['user']
+        extra_kwargs = {"user": {"read_only": True}}
 
 
 
