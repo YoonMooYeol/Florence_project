@@ -7,7 +7,8 @@ from .views import (
     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetViewSet,
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
     NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView, RegisterSendEmailView,
-    RegisterCheckView, FollowUnfollowView, RetrieveUserByEmailView, PhotoViewSet, DiaryPhotoViewSet
+    RegisterCheckView, FollowUnfollowView, RetrieveUserByEmailView, PhotoViewSet, DiaryPhotoViewSet,
+    FollowListView, FollowersListView
 )
 
 pregnancy_router = DefaultRouter()
@@ -48,7 +49,9 @@ urlpatterns = [
     path('check_register/', RegisterCheckView.as_view(), name='check-register'),
 
     path('follow/', FollowUnfollowView.as_view(), name='follow'),
-    path('follow/<str:email>/', FollowUnfollowView.as_view(), name='follow_action'),
+    path('follow/following/', FollowListView.as_view(), name='following-list'),
+    path('follow/followers/', FollowersListView.as_view(), name='followers-list'),
+
     path('search/', RetrieveUserByEmailView.as_view(), name='search'),
 
     path('users/photos/', include(photo_profile_router.urls), name='photos-profile'),
