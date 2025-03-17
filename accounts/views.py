@@ -452,18 +452,6 @@ class PregnancyViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-    # @action(detail=False, methods=['get'])
-    # def current_pregnancy(self, request):
-    #     """현재 진행 중인 임신 정보를 가져옵니다."""
-    #     pregnancy = self.get_queryset().first()
-    #     if pregnancy:
-    #         serializer = self.get_serializer(pregnancy)
-    #         return Response(serializer.data)
-    #     return Response(
-    #         {"message": "등록된 임신 정보가 없습니다."},
-    #         status=status.HTTP_404_NOT_FOUND
-    #     )
-
 
 class KakaoLoginCallbackView(APIView):
     """

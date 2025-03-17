@@ -7,3 +7,4 @@ class CalendarsConfig(AppConfig):
     
     def ready(self):
         import calendars.tasks  # 태스크 모듈 로드
+        import calendars.signals  # 시그널 모듈 로드
