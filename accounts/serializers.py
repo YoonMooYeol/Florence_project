@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Pregnancy, Follow
+from .models import User, Pregnancy, Follow, Photo
 from django.contrib.auth.password_validation import validate_password
 
 class UserSerializer(serializers.ModelSerializer):
@@ -196,9 +196,19 @@ class RegisterEmailSerializer(serializers.Serializer):
 
 
 class FollowUserSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source='following.name')
+
     class Meta:
         model = Follow
-        fields = ['follower', 'following', 'created_at']
+        fields = ['name', 'follower', 'following', 'created_at']
+
+
+class PhotoSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
+    class Meta:
+        model = Photo
+        fields = ['id', 'user', 'image', 'category', 'created_at', 'updated_at']
+        read_only_fields = ['user']
 
 
 
