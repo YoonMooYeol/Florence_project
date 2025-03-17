@@ -13,7 +13,7 @@ from langchain.memory import ConversationBufferMemory
 from django.conf import settings
 from accounts.models import Pregnancy  # Pregnancy 모델 임포트
 
-from rag.method import SimpleRAG
+from .method import SimpleRAG
 
 # 로깅 설정
 logger = logging.getLogger(__name__)

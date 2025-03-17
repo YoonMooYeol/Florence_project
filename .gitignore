@@ -10,6 +10,8 @@ __pycache__/
 /embeddings/*
 /data/
 /data/*
+0*.py
+
 
 # Distribution / packaging
 .Python

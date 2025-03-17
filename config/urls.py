@@ -21,10 +21,8 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("v1/rag/", include("rag.urls")),
     path("v1/accounts/", include("accounts.urls")),
     path("v1/llm/", include("llm.urls")),
-    path("v1/healthcare/", include("healthcare.urls")),
     path("v1/calendars/", include("calendars.urls")),
     
     # API 문서
