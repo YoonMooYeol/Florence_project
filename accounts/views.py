@@ -13,7 +13,7 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
-from rest_framework.generics import GenericAPIView
+from rest_framework.generics import GenericAPIView, ListAPIView
 
 from django.contrib.auth.hashers import get_random_string
 from django.http import HttpResponseRedirect
@@ -952,11 +952,21 @@ class FollowUnfollowView(GenericAPIView):
             return Response({"error": f"{following_user.name} 님을 팔로우하지 않았습니다."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-    def get(self, request):
-        """ 내가 팔로우한 사용자 목록 조회 """
-        following_users = Follow.objects.filter(follower=request.user)  # 내가 팔로우한 유저들
-        serializer = self.get_serializer(following_users, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class FollowListView(ListAPIView):
+    serializer_class = FollowUserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Follow.objects.filter(follower=self.request.user)
+
+class FollowersListView(ListAPIView):
+    serializer_class = FollowUserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Follow.objects.filter(following=self.request.user)
+
 
 
 class RetrieveUserByEmailView(GenericAPIView):
