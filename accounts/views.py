@@ -966,7 +966,7 @@ class FollowUnfollowView(GenericAPIView):
 
     def get(self, request):
         """ 내가 팔로우한 사용자 목록 조회 """
-        following_users = User.objects.filter(followers__follower=request.user)  # 내가 팔로우한 유저들
+        following_users = Follow.objects.filter(follower=request.user)  # 내가 팔로우한 유저들
         serializer = self.get_serializer(following_users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -992,7 +992,6 @@ class PhotoViewSet(ModelViewSet):
     """ 프로필 사진 등록/조회/수정/삭제 """
     permission_classes = [IsAuthenticated]
     serializer_class = PhotoSerializer
-
 
     def get_queryset(self):
         """ 현재 로그인한 사용자의 사진만 필터링 """

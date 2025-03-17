@@ -196,9 +196,11 @@ class RegisterEmailSerializer(serializers.Serializer):
 
 
 class FollowUserSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source='following.name')
+
     class Meta:
         model = Follow
-        fields = ['follower', 'following', 'created_at']
+        fields = ['name', 'follower', 'following', 'created_at']
 
 
 class PhotoSerializer(serializers.ModelSerializer):
