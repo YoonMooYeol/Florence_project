@@ -57,10 +57,8 @@ INSTALLED_APPS = [
     'django_celery_beat', # Celery
     
     #my apps
-    "rag",
     "accounts",
     "llm",
-    "healthcare",
     "calendars",
     
     # allauth 관련
