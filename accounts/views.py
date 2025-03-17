@@ -926,7 +926,7 @@ class FollowUnfollowView(GenericAPIView):
         return None
 
     def post(self, request, email=None):
-        """ 팔로우 기능 """
+        """ 팔로우/언팔로우 토글 기능 """
         following_user = self.get_following_user(email)
         follower = request.user
 
@@ -937,24 +937,15 @@ class FollowUnfollowView(GenericAPIView):
             return Response({"error": "자기 자신을 팔로우할 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         follow, created = Follow.objects.get_or_create(follower=follower, following=following_user)
+
         if created:
-            return Response({"message": f"{following_user.name} 님을 팔로우했습니다."},
+            return Response({"message": f"{following_user.name} 님을 팔로우했습니다.", "status": 1},
                             status=status.HTTP_201_CREATED)
-        return Response({"message": "이미 팔로우 중입니다."}, status=status.HTTP_200_OK)
-
-    def delete(self, request, email=None):
-        """ 언팔로우 기능 """
-        following_user = self.get_following_user(email)
-        follower = request.user
-
-        # 팔로우 관계가 존재하는지 확인 후 삭제
-        try:
-            follow = Follow.objects.get(follower=follower, following=following_user)
+        else:
             follow.delete()
-            return Response({"message": f"{following_user.name} 님을 언팔로우했습니다."}, status=status.HTTP_200_OK)
-        except Follow.DoesNotExist:
-            return Response({"error": f"{following_user.name} 님을 팔로우하지 않았습니다."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response({"message": f"{following_user.name} 님을 언팔로우했습니다.", "status": 0},
+                            status=status.HTTP_200_OK)
+
 
 
 class FollowListView(ListAPIView):

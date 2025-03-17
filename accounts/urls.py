@@ -48,7 +48,7 @@ urlpatterns = [
     path('send_register/', RegisterSendEmailView.as_view(), name='register-send'),
     path('check_register/', RegisterCheckView.as_view(), name='check-register'),
 
-    path('follow/', FollowUnfollowView.as_view(), name='follow'),
+    path("follow/<str:email>/", FollowUnfollowView.as_view(), name="follow-toggle"),
     path('follow/following/', FollowListView.as_view(), name='following-list'),
     path('follow/followers/', FollowersListView.as_view(), name='followers-list'),
 
