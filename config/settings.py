@@ -376,3 +376,20 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=0, minute=0),  # 매일 자정 0시 0분 실행
     },
 }
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "unique-snowflake",
+        "TIMEOUT": 600,
+    }
+}
+
+# Media
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 이미지 파일 저장 경로
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
