@@ -14,6 +14,7 @@ from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 from rest_framework.generics import GenericAPIView, ListAPIView
+from rest_framework.parsers import MultiPartParser, FormParser
 
 from django.contrib.auth.hashers import get_random_string
 from django.http import HttpResponseRedirect
@@ -207,7 +208,7 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
             return Response({"success": False, "message": f"이메일 전송 중 오류가 발생했습니다: {str(e)}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def send_mail(self, recipient_email, code):
+    def send_mail(self, recipient_email, code, html_content=None):
         """ 이메일 전송 """
         # 이메일 주소 형식 확인
         if not re.match(r"[^@]+@[^@]+\.[^@]+", recipient_email):
@@ -985,6 +986,7 @@ class PhotoViewSet(ModelViewSet):
     """ 프로필 사진 등록/조회/수정/삭제 """
     permission_classes = [IsAuthenticated]
     serializer_class = PhotoSerializer
+    parser_classes = [MultiPartParser, FormParser] # 파일 업로드 가능
 
     def get_queryset(self):
         """ 현재 로그인한 사용자의 사진만 필터링 """
@@ -998,6 +1000,7 @@ class DiaryPhotoViewSet(ModelViewSet):
     """ 일기 사진 등록/조회/수정/삭제 """
     permission_classes = [IsAuthenticated]
     serializer_class = PhotoSerializer
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
         """ 현재 로그인한 사용자의 태교일기 사진만 필터링 """
