@@ -359,6 +359,7 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE  # 한국 시간대 설정
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 # Celery Beat 설정
 from celery.schedules import crontab
@@ -369,9 +370,9 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=3, minute=0),  # 매일 새벽 3시에 실행
         # 'schedule': 10.0,  # 10초마다 실행 (테스트용)
     },
-    # 테스트용 태스크
-    # 'test-every-10-seconds': {
-    #     'task': 'calendars.tasks.test_task',
-    #     'schedule': 30.0,
-    # },
+    # 임신 주차 자동 업데이트
+    'update-pregnancy-weeks': {
+        'task': 'accounts.tasks.update_pregnancy_weeks',
+        'schedule': crontab(hour=0, minute=0),  # 매일 자정 0시 0분 실행
+    },
 }

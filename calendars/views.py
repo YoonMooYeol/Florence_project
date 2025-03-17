@@ -19,6 +19,7 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 from django.http import Http404
+from django.utils import timezone
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
@@ -181,9 +182,13 @@ class DailyConversationSummaryViewSet(viewsets.ModelViewSet):
                 )
             
             # 해당 날짜의 대화 찾기
-            start_datetime = datetime.combine(summary_date, datetime.min.time())
-            end_datetime = datetime.combine(summary_date, datetime.max.time())
+            start_naive = datetime.combine(summary_date, datetime.min.time())
+            end_naive = datetime.combine(summary_date, datetime.max.time())
             
+            # 시간대 정보 추가
+            start_datetime = timezone.make_aware(start_naive)
+            end_datetime = timezone.make_aware(end_naive)
+
             conversations = LLMConversation.objects.filter(
                 user=request.user,
                 created_at__gte=start_datetime,
