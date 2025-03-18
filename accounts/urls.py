@@ -8,22 +8,17 @@ from .views import (
     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetViewSet,
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
     NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView, RegisterSendEmailView,
-    RegisterCheckView, FollowUnfollowView, RetrieveUserByEmailView, PhotoViewSet, DiaryPhotoViewSet,
+    RegisterCheckView, FollowUnfollowView, RetrieveUserByEmailView, ProfilePhotoView,
     FollowListView, FollowersListView
 )
 
 pregnancy_router = DefaultRouter()
 router = DefaultRouter()
-photo_profile_router = DefaultRouter()
-photo_diary_router = DefaultRouter()
 
 pregnancy_router.register(r'pregnancies', PregnancyViewSet, basename='pregnancy')
 router.register(r'reset_code', PasswordResetViewSet, basename='reset-send-code')
 router.register(r'check_code', PasswordResetCheckViewSet, basename='reset-check-code')
 router.register(r'confirm_code', PasswordResetConfirmViewSet, basename='reset-confirm')
-photo_profile_router.register(r'profile', PhotoViewSet, basename='photo-profile')
-photo_diary_router.register(r'diary', DiaryPhotoViewSet, basename='photo-diary')
-
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),  # 회원가입
@@ -55,8 +50,7 @@ urlpatterns = [
 
     path('search/', RetrieveUserByEmailView.as_view(), name='search'),
 
-    path('users/photos/', include(photo_profile_router.urls), name='photos-profile'),
-    path('users/photos/', include(photo_diary_router.urls), name='photos-diary'),
+    path('profile/photo/', ProfilePhotoView.as_view(), name='profile_photo'),
 
 
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
