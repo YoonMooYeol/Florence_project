@@ -967,6 +967,8 @@ class FollowUnfollowView(GenericAPIView):
             follow.delete()
             return Response({"message": f"{following_user.name} 님을 언팔로우했습니다.", "status": 0},
                             status=status.HTTP_200_OK)
+        except Follow.DoesNotExist:
+            return Response({"error": "팔로우 관계가 존재하지 않습니다."}, status=status.HTTP_404_NOT_FOUND)
 
 
 
