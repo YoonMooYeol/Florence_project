@@ -9,6 +9,8 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from .models import LLMConversation, ChatManager
+import asyncio
+from asgiref.sync import sync_to_async
 
 # 환경 변수 로드
 load_dotenv()
@@ -90,58 +92,66 @@ class PregnancyContext:
         self.user_id = user_id
         self.thread_id = thread_id
         
-        # 유저 ID가 제공된 경우 DB에서 관련 정보 로드
-        if user_id:
-            self._load_user_data()
+        # 유저 ID가 제공된 경우 DB에서 관련 정보 로드 -> 여기서 DB를 바로 로드하지 않음!
+        # if user_id:
+        #     self._load_user_data()
     
-    def _load_user_data(self):
-        """사용자 및 관련 임신 정보 로드"""
+    async def load_user_data_async(self):
+        """
+        ORM을 비동기 문맥에서 호출할 수 있도록 sync_to_async 사용.
+        실제 DB에서 사용자 및 임신 정보, 대화 등을 로드.
+        """
         from accounts.models import User, Pregnancy
-        
+
+        # 1) user 불러오기 (동기 ORM -> sync_to_async)
         try:
-            user = User.objects.get(user_id=self.user_id)
-            self.user_info = {
-                "name": user.name,
-                "is_pregnant": user.is_pregnant,
-                "email": user.email
-            }
-            
-            # 임신 정보 로드
-            pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
-            if pregnancy:
-                self.pregnancy_week = pregnancy.current_week
-                self.user_info["pregnancy_id"] = str(pregnancy.pregnancy_id)
-                self.user_info["due_date"] = pregnancy.due_date.isoformat() if pregnancy.due_date else None
-                self.user_info["baby_name"] = pregnancy.baby_name
-            
-            # 대화 내역 로드 (최근 5개)
-            if self.thread_id:
-                # 특정 채팅방의 대화
-                try:
-                    chat_room = ChatManager.objects.get(chat_id=self.thread_id)
-                    conversations = LLMConversation.objects.filter(
-                        chat_room=chat_room
-                    ).order_by('-created_at')[:5]
-                except ChatManager.DoesNotExist:
-                    conversations = []
+            user = await sync_to_async(User.objects.get)(user_id=self.user_id)
+        except User.DoesNotExist:
+            print(f"사용자 데이터 로드 중 오류: user_id={self.user_id} 해당 사용자가 없습니다.")
+            return
+
+        self.user_info = {
+            "name": user.name,
+            "is_pregnant": user.is_pregnant,
+            "email": user.email,
+        }
+
+        # 2) 임신 정보 불러오기
+        pregnancy = await sync_to_async(Pregnancy.objects.filter(user=user).order_by('-created_at').first)()
+        if pregnancy:
+            self.pregnancy_week = pregnancy.current_week
+            self.user_info["pregnancy_id"] = str(pregnancy.pregnancy_id)
+            self.user_info["due_date"] = pregnancy.due_date.isoformat() if pregnancy.due_date else None
+            self.user_info["baby_name"] = pregnancy.baby_name
+
+        # 3) 대화 로드 (최근 5개)
+        from .models import ChatManager, LLMConversation
+
+        if self.thread_id:
+            # 특정 채팅방
+            chat_room = await sync_to_async(ChatManager.objects.filter(chat_id=self.thread_id).first)()
+            if chat_room:
+                conversations = await sync_to_async(
+                    lambda: list(LLMConversation.objects.filter(chat_room=chat_room).order_by('-created_at')[:5])
+                )()
             else:
-                # 사용자의 최근 대화
-                conversations = LLMConversation.objects.filter(
-                    user=user
-                ).order_by('-created_at')[:5]
-            
-            for conv in conversations:
-                self.conversation_history.insert(0, {
-                    "user": conv.query,
-                    "assistant": conv.response,
-                    "created_at": conv.created_at.isoformat()
-                })
-            
-            # 대화 요약 업데이트
-            self._update_conversation_summary()
-        
-        except Exception as e:
-            print(f"사용자 데이터 로드 중 오류: {str(e)}")
+                conversations = []
+        else:
+            # 사용자의 전체 최근 대화
+            conversations = await sync_to_async(
+                lambda: list(LLMConversation.objects.filter(user=user).order_by('-created_at')[:5])
+            )()
+
+        # 4) self.conversation_history 채우기
+        for conv in reversed(conversations):
+            self.conversation_history.append({
+                "user": conv.query,
+                "assistant": conv.response,
+                "created_at": conv.created_at.isoformat()
+            })
+
+        # 5) 대화 요약
+        self._update_conversation_summary()
     
     def update_pregnancy_week(self, week: int):
         """임신 주차 정보 업데이트"""
@@ -178,48 +188,91 @@ class PregnancyContext:
         """정보 검증 결과 추가"""
         self.verification_results.append(result)
     
-    def save_to_db(self, user_input: str, assistant_output: str, 
-                  source_documents=None, using_rag=False):
-        """대화 내용을 DB에 저장"""
-        from accounts.models import User
-        
+    async def save_to_db_async(self, user_input: str, assistant_output: str,
+                               source_documents=None, using_rag=False):
+        """
+        대화 내용을 DB에 저장 (비동기 -> sync_to_async)
+        """
+        from accounts.models import User, Pregnancy
+        from .models import ChatManager, LLMConversation
+
         if not self.user_id:
             return None
-        
+
         try:
-            user = User.objects.get(user_id=self.user_id)
-            
-            # 채팅방 관련 처리
-            chat_room = None
-            if self.thread_id:
-                try:
-                    chat_room = ChatManager.objects.get(chat_id=self.thread_id)
-                except ChatManager.DoesNotExist:
-                    # 채팅방이 없으면 생성
-                    from accounts.models import Pregnancy
-                    pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
-                    chat_room = ChatManager.objects.create(
-                        user=user,
-                        pregnancy=pregnancy,
-                        is_active=True
-                    )
-            
-            # 대화 저장
-            conversation = LLMConversation.objects.create(
-                user=user,
-                chat_room=chat_room,
-                query=user_input,
-                response=assistant_output,
-                user_info=self.user_info,
-                source_documents=source_documents or [],
-                using_rag=using_rag
-            )
-            
-            return conversation
-            
-        except Exception as e:
-            print(f"대화 저장 중 오류: {str(e)}")
+            user = await sync_to_async(User.objects.get)(user_id=self.user_id)
+        except User.DoesNotExist:
+            print(f"대화 저장 중 오류: user_id={self.user_id} 해당 사용자가 없습니다.")
             return None
+
+        # 채팅방 관련 처리
+        chat_room = None
+        if self.thread_id:
+            chat_room = await sync_to_async(ChatManager.objects.filter(chat_id=self.thread_id).first)()
+            if not chat_room:
+                # 없으면 생성
+                pregnancy = await sync_to_async(
+                    lambda: Pregnancy.objects.filter(user=user).order_by('-created_at').first()
+                )()
+                chat_room = await sync_to_async(ChatManager.objects.create)(
+                    user=user, pregnancy=pregnancy, is_active=True
+                )
+
+        # 대화 저장
+        conversation = await sync_to_async(LLMConversation.objects.create)(
+            user=user,
+            chat_room=chat_room,
+            query=user_input,
+            response=assistant_output,
+            user_info=self.user_info,
+            source_documents=source_documents or [],
+            using_rag=using_rag
+        )
+        return conversation
+    
+    def save_to_db(self, user_input: str, assistant_output: str,
+                   source_documents=None, using_rag=False):
+        """
+        (새로 추가)
+        동기 ORM으로 DB에 대화 저장.
+        동기 뷰 내부에서 편하게 호출하기 위함.
+        """
+        from accounts.models import User, Pregnancy
+        from .models import ChatManager, LLMConversation
+
+        if not self.user_id:
+            return None
+
+        try:
+            user = User.objects.get(user_id=self.user_id)  # 동기 ORM
+        except User.DoesNotExist:
+            print(f"대화 저장 중 오류: user_id={self.user_id} 해당 사용자가 없습니다.")
+            return None
+
+        # 채팅방 관련 처리
+        chat_room = None
+        if self.thread_id:
+            chat_room = ChatManager.objects.filter(chat_id=self.thread_id).first()
+            if not chat_room:
+                # 없으면 생성
+                pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
+                chat_room = ChatManager.objects.create(
+                    user=user,
+                    pregnancy=pregnancy,
+                    is_active=True
+                )
+
+        # 대화 저장
+        conversation = LLMConversation.objects.create(
+            user=user,
+            chat_room=chat_room,
+            query=user_input,
+            response=assistant_output,
+            user_info=self.user_info,
+            source_documents=source_documents or [],
+            using_rag=using_rag
+        )
+        return conversation
 
 # 가드레일 정의
 @input_guardrail
@@ -537,6 +590,9 @@ class OpenAIAgentService:
         # 컨텍스트 초기화
         context = PregnancyContext(user_id=user_id, thread_id=thread_id)
         
+        if user_id:
+            await context.load_user_data_async()
+        
         # 추가 정보 설정
         if pregnancy_week:
             context.update_pregnancy_week(pregnancy_week)
@@ -623,10 +679,10 @@ class OpenAIAgentService:
             context.add_conversation(query_text, response_text)
             
             # DB에 대화 저장
-            conversation = context.save_to_db(query_text, response_text)
+            conversation = await context.save_to_db_async(query_text, response_text)
             if conversation:
                 result_data["conversation_id"] = conversation.id
-            
+
             return result_data
 
 # 서비스 인스턴스 생성
