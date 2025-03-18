@@ -1,9 +1,11 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django_filters import rest_framework as filters
-from .models import Event, DailyConversationSummary, BabyDiary
+from .models import Event, DailyConversationSummary, BabyDiary, Pregnancy
 from .serializers import (
     EventSerializer, 
     EventDetailSerializer,
@@ -20,6 +22,12 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from django.http import Http404
 from django.utils import timezone
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
+from .models import BabyDiary, BabyDiaryPhoto
+from .serializers import BabyDiaryPhotoSerializer
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
@@ -282,73 +290,139 @@ class BabyDiaryFilter(filters.FilterSet):
 class BabyDiaryViewSet(viewsets.ModelViewSet):
     """
     아기 일기 관리 ViewSet
-    
+
     list: 아기 일기 목록 조회 (월별/일별 필터링 가능)
-      - ?start_date=2023-01-01&end_date=2023-01-31 형식으로 월별 조회 가능
-      - ?diary_date=2023-01-01 형식으로 특정 날짜 조회 가능
     retrieve: 특정 날짜의 아기 일기 상세 조회
     create: 아기 일기 생성 (하루에 하나씩만 생성 가능)
     update: 아기 일기 수정
     destroy: 아기 일기 삭제
     """
-    permission_classes = [IsAuthenticated]
-    filterset_class = BabyDiaryFilter
-    lookup_field = 'diary_date'  # URL에서 날짜로 조회할 수 있도록 설정
-    
+    permission_classes = [IsAuthenticated]  # 로그인한 사용자만 접근
+    lookup_field = 'pregnancy_id'  # pregnancy_id로 조회
+
     def get_queryset(self):
-        # 쿼리 파라미터 로깅
-        start_date = self.request.query_params.get('start_date')
-        end_date = self.request.query_params.get('end_date')
-        diary_date = self.request.query_params.get('diary_date')
-        
-        logger.info(f"Filtering baby diaries with start_date: {start_date}, end_date: {end_date}, diary_date: {diary_date}")
-        
-        # 사용자 본인의 아기 일기만 조회
-        queryset = BabyDiary.objects.filter(
-            user=self.request.user
-        )
-        
-        # 특정 날짜 필터링 (일별 조회)
-        if diary_date:
-            queryset = queryset.filter(diary_date=diary_date)
-            logger.info(f"Filtering by exact diary_date: {diary_date}")
-        # 날짜 범위 필터링 (월별 조회)
-        else:
-            # 명시적으로 날짜 필터링 추가
-            if start_date:
-                queryset = queryset.filter(diary_date__gte=start_date)
-            if end_date:
-                queryset = queryset.filter(diary_date__lte=end_date)
-        
-        logger.info(f"Filtered baby diary queryset count: {queryset.count()}")
-        return queryset
-    
+        user = self.request.user
+        return BabyDiary.objects.filter(user=user)
+
+    def get_object(self):
+        pregnancy_id = self.kwargs['pregnancy_id']
+        diary_date = self.kwargs['diary_date']
+
+        # pregnancy_id와 diary_date로 여러 개의 BabyDiary가 존재할 수 있기 때문에 첫 번째 결과만 반환
+        obj = self.get_queryset().filter(pregnancy_id=pregnancy_id, diary_date=diary_date).first()
+
+        if obj is None:
+            raise NotFound("해당 아기 일기가 존재하지 않습니다.")
+
+        self.check_object_permissions(self.request, obj)
+        return obj
+
     def get_serializer_class(self):
+        """
+        생성과 조회/수정에 대해 다른 Serializer를 사용
+        """
         if self.action == 'create':
             return BabyDiaryCreateSerializer
         return BabyDiarySerializer
-    
+
     def perform_create(self, serializer):
-        # 사용자 자동 설정
-        serializer.save(user=self.request.user)
-        
-    def get_object(self):
         """
-        diary_date를 기준으로 객체를 조회하는 로직
-        URL에서 날짜로 조회할 수 있도록 오버라이드
+        아기 일기 생성 시 pregnancy_id를 기준으로 Pregnancy 객체를 가져와
+        연결하고, 생성된 태교일기를 반환합니다.
         """
-        queryset = self.filter_queryset(self.get_queryset())
-        
-        # lookup_url_kwarg가 설정되지 않은 경우 기본값 사용
-        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-        
-        # URL에서 전달된 날짜 가져오기
-        diary_date = self.kwargs[lookup_url_kwarg]
-        
-        try:
-            # 사용자와 날짜로 객체 필터링
-            obj = queryset.get(user=self.request.user, diary_date=diary_date)
-            self.check_object_permissions(self.request, obj)
-            return obj
-        except BabyDiary.DoesNotExist:
-            raise Http404("해당 날짜의 아기 일기가 존재하지 않습니다.")
+        user = self.request.user
+        pregnancy_id = self.kwargs['pregnancy_id']
+        pregnancy = get_object_or_404(Pregnancy, pregnancy_id=pregnancy_id, user=user)
+
+        diary_date = serializer.validated_data['diary_date']
+
+        # 같은 diary_date가 존재하면 업데이트, 없으면 생성
+        baby_diary, created = BabyDiary.objects.update_or_create(
+            user=user,
+            diary_date=diary_date,  # 중복 체크할 필드
+            defaults={**serializer.validated_data, 'pregnancy': pregnancy}
+        )
+
+        return baby_diary
+
+    def perform_update(self, serializer):
+        """
+        아기 일기 수정 시 해당 일기를 수정합니다.
+        """
+        user = self.request.user
+        pregnancy_id = self.kwargs['pregnancy_id']
+        pregnancy = get_object_or_404(Pregnancy, pregnancy_id=pregnancy_id, user=user)
+
+        baby_diary = self.get_object()
+        baby_diary.pregnancy = pregnancy  # pregnancy 업데이트
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        """
+        아기 일기 삭제 시 해당 일기를 삭제합니다.
+        """
+        instance.delete()
+
+
+class BabyDiaryPhotoView(APIView):
+    """
+    태교일기 사진 CRUD API
+    """
+
+    parser_classes = [MultiPartParser, FormParser]
+    def post(self, request, diary_id):
+        diary = get_object_or_404(BabyDiary, diary_id=diary_id, user=request.user)
+
+        # 여러 이미지를 처리
+        photo = request.FILES.getlist('image')  # 'image'는 Postman에서 form-data로 보낸 key 값
+
+        # BabyDiaryPhoto 객체들을 하나씩 생성하여 저장
+        saved_photos = []
+        for photo in photo:
+            photo_instance = BabyDiaryPhoto.objects.create(
+                babydiary=diary,
+                image=photo
+            )
+            saved_photos.append(photo_instance)
+
+        # 저장된 사진들을 직렬화하여 응답 반환
+        serializer = BabyDiaryPhotoSerializer(saved_photos, many=True)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def get(self, request, diary_id):
+        """
+        태교일기 사진 조회
+        """
+        diary_photos = BabyDiaryPhoto.objects.filter(babydiary__diary_id=diary_id, babydiary__user=request.user)
+        serializer = BabyDiaryPhotoSerializer(diary_photos, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+    def patch(self, request, diary_id, pk):
+        """
+        태교일기 사진 부분 수정 (이미지 수정 등)
+        """
+        diary = get_object_or_404(BabyDiary, diary_id=diary_id, user=request.user)
+        photo = get_object_or_404(BabyDiaryPhoto, pk=pk, babydiary=diary)
+
+        serializer = BabyDiaryPhotoSerializer(photo, data=request.data, partial=True)
+        if serializer.is_valid():
+            if "image" in request.data:
+                # 기존 이미지 삭제 후 새 이미지 저장
+                photo.image.delete(save=False)
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, diary_id, pk):
+        """
+        태교일기 사진 삭제
+        """
+        diary = get_object_or_404(BabyDiary, diary_id=diary_id, user=request.user)
+        photo = get_object_or_404(BabyDiaryPhoto, pk=pk, babydiary=diary)
+
+        # 사진 삭제 (파일 시스템에서 삭제)
+        photo.image.delete(save=False)
+        photo.delete()
+
+        return Response({"detail": "사진이 삭제되었습니다."}, status=status.HTTP_204_NO_CONTENT)
