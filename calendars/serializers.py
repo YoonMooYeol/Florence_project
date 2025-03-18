@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Event, DailyConversationSummary, BabyDiary
+from .models import Event, DailyConversationSummary, BabyDiary, BabyDiaryPhoto
 from llm.models import LLMConversation
 
 class EventSerializer(serializers.ModelSerializer):
@@ -42,16 +42,29 @@ class DailyConversationSummaryCreateSerializer(serializers.ModelSerializer):
         
         return summary
 
+
+class BabyDiaryPhotoSerializer(serializers.ModelSerializer):
+    diary_id = serializers.UUIDField(source="BabyDiary.diary_id", read_only=True)
+
+    class Meta:
+        model = BabyDiaryPhoto
+        fields = ['photo_id', 'diary_id', 'image', 'created_at']
+        read_only_fields = ['photo_id', 'diary_id' ,'created_at']
+
+
 class BabyDiarySerializer(serializers.ModelSerializer):
+    photos = BabyDiaryPhotoSerializer(many=True, read_only=True)
     class Meta:
         model = BabyDiary
         fields = '__all__'
-        read_only_fields = ['diary_id', 'user', 'created_at', 'updated_at']
+        read_only_fields = ['diary_id', 'user', 'created_at', 'updated_at', 'photos']
 
 class BabyDiaryCreateSerializer(serializers.ModelSerializer):
+    pregnancy_id = serializers.UUIDField()
+
     class Meta:
         model = BabyDiary
-        fields = ['pregnancy', 'content', 'diary_date']
+        fields = ['diary_date','diary_id','pregnancy_id']
         read_only_fields = ['diary_id', 'user', 'created_at', 'updated_at']
         
     def create(self, validated_data):
