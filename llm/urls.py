@@ -14,7 +14,8 @@ URL 패턴:
     /v1/llm/conversations/edit/ - 대화 수정 API (PUT)
     /v1/llm/conversations/delete/ - 대화 삭제 API (DELETE)
     /v1/llm/pregnancy-search/ - 임신 주차 검색 API (POST)
-    /v1/llm/agent/ - 검색 도구를 사용하는 LLM 에이전트 API (POST)
+    /v1/llm/agent/ - OpenAI 에이전트 API (POST)
+    /v1/llm/agent/stream/ - OpenAI 에이전트 스트리밍 API (POST)
     
     # 채팅방 관련 URL
     /v1/llm/chat/rooms/ - 채팅방 목록 조회 (GET) 및 생성 (POST)
@@ -36,11 +37,11 @@ urlpatterns = [
     # 임신 주차 검색 API
     path('pregnancy-search/', views.pregnancy_search, name='pregnancy_search'),
     
-    # 새로운 LLM 에이전트 API
-    path('agent/', views.LLMAgentQueryView.as_view(), name='llm_agent_query'),
+    # OpenAI 에이전트 API
+    path('agent/', views.OpenAIAgentQueryView.as_view(), name='openai_agent_query'),
     
-    # Florence 에이전트 API
-    path('florence/', views.FlorenceAgentView.as_view(), name='florence_agent'),
+    # OpenAI 에이전트 스트리밍 API
+    path('agent/stream/', views.OpenAIAgentStreamView.as_view(), name='openai_agent_stream'),
     
     # 채팅방 관련 API
     path('chat/rooms/', views.ChatRoomListCreateView.as_view(), name='chat_rooms'),
