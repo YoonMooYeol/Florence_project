@@ -5,6 +5,7 @@ import random
 import re
 from datetime import datetime
 
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, viewsets, permissions
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -964,7 +965,6 @@ class FollowersListView(ListAPIView):
         return Follow.objects.filter(following=self.request.user)
 
 
-
 class RetrieveUserByEmailView(GenericAPIView):
     """ 이메일로 사용자 검색 """
     permission_classes = [permissions.AllowAny]  # [IsAuthenticated] 배포 전 교체
@@ -982,33 +982,46 @@ class RetrieveUserByEmailView(GenericAPIView):
             return Response({"detail": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
 
 
-class PhotoViewSet(ModelViewSet):
-    """ 프로필 사진 등록/조회/수정/삭제 """
-    permission_classes = [IsAuthenticated]
-    serializer_class = PhotoSerializer
-    parser_classes = [MultiPartParser, FormParser] # 파일 업로드 가능
+class ProfilePhotoView(APIView):
+    def get(self, request, user_id=None):
+        """
+        특정 사용자의 프로필 사진을 조회할 수 있도록 수정.
+        user_id가 제공되지 않으면 현재 사용자의 프로필 사진을 반환.
+        """
+        if user_id:
+            user = get_object_or_404(User, id=user_id)
+            photo = get_object_or_404(Photo, user=user)
+        else:
+            photo = get_object_or_404(Photo, user=request.user)
 
-    def get_queryset(self):
-        """ 현재 로그인한 사용자의 사진만 필터링 """
-        return Photo.objects.filter(user=self.request.user, category="profile")
+        serializer = PhotoSerializer(photo)
+        return Response(serializer.data)
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+    def post(self, request):
+        """ 현재 사용자에게 프로필 사진이 없을 경우에만 등록 가능 """
+        if Photo.objects.filter(user=request.user).exists():
+            return Response({"detail": "이미 등록된 사진이 있습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
+        serializer = PhotoSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class DiaryPhotoViewSet(ModelViewSet):
-    """ 일기 사진 등록/조회/수정/삭제 """
-    permission_classes = [IsAuthenticated]
-    serializer_class = PhotoSerializer
-    parser_classes = [MultiPartParser, FormParser]
+    def put(self, request):
+        """ 현재 사용자의 프로필 사진을 수정 """
+        photo = get_object_or_404(Photo, user=request.user)
+        serializer = PhotoSerializer(photo, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def get_queryset(self):
-        """ 현재 로그인한 사용자의 태교일기 사진만 필터링 """
-        return Photo.objects.filter(user=self.request.user, category="diary")
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
+    def delete(self, request):
+        """ 현재 사용자의 프로필 사진을 삭제 """
+        photo = get_object_or_404(Photo, user=request.user)
+        photo.delete()
+        return Response({"detail": "프로필 사진이 삭제되었습니다."}, status=status.HTTP_204_NO_CONTENT)
 
 
 
