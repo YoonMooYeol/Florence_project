@@ -1,0 +1,200 @@
+{
+    "info": {
+      "_postman_id": "7ac8d456-8e3f-4c8e-9c29-a22e3f6db4c1",
+      "name": "OpenAI 에이전트 API 테스트",
+      "description": "OpenAI 에이전트를 사용한 임신 관련 정보 제공 API 테스트 컬렉션",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+      {
+        "name": "에이전트 API (일반)",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "type": "text"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"user_id\": \"test_user_123\",\n  \"query_text\": \"임신 10주차에는 어떤 변화가 있나요?\",\n  \"baby_name\": \"새봄이\",\n  \"pregnancy_week\": 10,\n  \"thread_id\": \"c79f3d36-e53e-4c7e-9d9a-87e679ac85b1\",\n  \"stream\": false\n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          },
+          "url": {
+            "raw": "{{base_url}}/v1/llm/agent/",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              "v1",
+              "llm",
+              "agent",
+              ""
+            ]
+          },
+          "description": "일반 응답 모드의 OpenAI 에이전트 API 호출"
+        },
+        "response": []
+      },
+      {
+        "name": "에이전트 API (스트리밍)",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "type": "text"
+            },
+            {
+              "key": "Accept",
+              "value": "text/event-stream",
+              "type": "text"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"user_id\": \"test_user_123\",\n  \"query_text\": \"임신 중 좋은 영양제 추천해주세요\",\n  \"pregnancy_week\": 12,\n  \"baby_name\": \"새봄이\",\n  \"thread_id\": \"c79f3d36-e53e-4c7e-9d9a-87e679ac85b1\"\n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          },
+          "url": {
+            "raw": "{{base_url}}/v1/llm/agent/stream/",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              "v1",
+              "llm",
+              "agent",
+              "stream",
+              ""
+            ]
+          },
+          "description": "스트리밍 모드의 OpenAI 에이전트 API 호출 (SSE)"
+        },
+        "response": []
+      },
+      {
+        "name": "영양 정보 질문 (스트리밍)",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "type": "text"
+            },
+            {
+              "key": "Accept",
+              "value": "text/event-stream",
+              "type": "text"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"user_id\": \"test_user_123\",\n  \"query_text\": \"임신 중 어떤 음식을 피해야 하나요?\",\n  \"pregnancy_week\": 14,\n  \"baby_name\": \"새봄이\",\n  \"thread_id\": \"c79f3d36-e53e-4c7e-9d9a-87e679ac85b1\"\n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          },
+          "url": {
+            "raw": "{{base_url}}/v1/llm/agent/stream/",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              "v1",
+              "llm",
+              "agent",
+              "stream",
+              ""
+            ]
+          },
+          "description": "임신 중 식이 관련 질문 (스트리밍)"
+        },
+        "response": []
+      },
+      {
+        "name": "정책 정보 질문 (스트리밍)",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "type": "text"
+            },
+            {
+              "key": "Accept",
+              "value": "text/event-stream",
+              "type": "text"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"user_id\": \"test_user_123\",\n  \"query_text\": \"임신 중 받을 수 있는 정부 지원은 어떤 것이 있나요?\",\n  \"pregnancy_week\": 8,\n  \"baby_name\": \"새봄이\",\n  \"thread_id\": \"c79f3d36-e53e-4c7e-9d9a-87e679ac85b1\"\n}",
+            "options": {
+              "raw": {
+                "language": "json"
+              }
+            }
+          },
+          "url": {
+            "raw": "{{base_url}}/v1/llm/agent/stream/",
+            "host": [
+              "{{base_url}}"
+            ],
+            "path": [
+              "v1",
+              "llm",
+              "agent",
+              "stream",
+              ""
+            ]
+          },
+          "description": "임신 중 정부 지원 정책 관련 질문 (스트리밍)"
+        },
+        "response": []
+      }
+    ],
+    "event": [
+      {
+        "listen": "prerequest",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            ""
+          ]
+        }
+      },
+      {
+        "listen": "test",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            ""
+          ]
+        }
+      }
+    ],
+    "variable": [
+      {
+        "key": "base_url",
+        "value": "http://localhost:8000",
+        "type": "string",
+        "description": "API 서버 기본 URL (개발 환경)"
+      }
+    ]
+  }

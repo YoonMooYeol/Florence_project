@@ -1,57 +1,68 @@
-import asyncio
 import os
 from dotenv import load_dotenv
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel
 
-from openai.types.responses import ResponseTextDeltaEvent
-from django.conf import settings
-
-# Django 모델 임포트 추가
-from accounts.models import User, Pregnancy
-from llm.models import ChatManager, LLMConversation
-
-# OpenAI 에이전트 패키지 임포트
 from agents import Agent, Runner, WebSearchTool, FileSearchTool, trace, handoff, input_guardrail, output_guardrail, GuardrailFunctionOutput
 from agents import RunHooks, RunContextWrapper, Usage, Tool
+from django.conf import settings
+from django.db import models
+from django.utils import timezone
+from .models import LLMConversation, ChatManager
 
 # 환경 변수 로드
 load_dotenv()
 
-# 시스템 환경 설정
-model_name = settings.LLM_MODEL if hasattr(settings, 'LLM_MODEL') else os.getenv("LLM_MODEL", "gpt-4o-mini")
-openai_api_key = settings.OPENAI_API_KEY if hasattr(settings, 'OPENAI_API_KEY') else os.getenv("OPENAI_API_KEY")
-vector_store_id = os.getenv("VECTOR_STORE_ID")  # 벡터 스토어 ID 추가
+model_name = os.getenv("MODEL_NAME") or "gpt-4o"
+openai_api_key = os.getenv("OPENAI_API_KEY")
+vector_store_id = os.getenv("VECTOR_STORE_ID")  # 벡터 스토어 ID
 
-# 라이프사이클 추적을 위한 훅 클래스 추가
+# 라이프사이클 추적을 위한 훅 클래스
 class PregnancyAgentHooks(RunHooks):
     def __init__(self):
         self.event_counter = 0
-        self.logs = []  # 이벤트 로그 저장을 위한 리스트 추가
-        self.error_logs = []  # 오류 로그 저장
+        self.agent_responses = {}
+        self.tool_results = {}
+        self.handoffs = []
 
     async def on_agent_start(self, context: RunContextWrapper, agent: Agent) -> None:
         self.event_counter += 1
-        self.logs.append(f"선택된 에이전트 [{agent.name}]")
+        self.agent_responses[agent.name] = {"start_time": timezone.now(), "response": ""}
 
     async def on_agent_end(self, context: RunContextWrapper, agent: Agent, output: Any) -> None:
         self.event_counter += 1
-        self.logs.append(f"에이전트 종료 [{agent.name}]")
+        if agent.name in self.agent_responses:
+            self.agent_responses[agent.name]["end_time"] = timezone.now()
+            self.agent_responses[agent.name]["response"] = str(output)
 
     async def on_handoff(self, context: RunContextWrapper, from_agent: Agent, to_agent: Agent) -> None:
         self.event_counter += 1
-        self.logs.append(f"핸드오프 [{from_agent.name}] -> [{to_agent.name}]")
+        self.handoffs.append({
+            "from": from_agent.name,
+            "to": to_agent.name,
+            "time": timezone.now()
+        })
         
     async def on_tool_start(self, context: RunContextWrapper, agent: Agent, tool: Tool) -> None:
         self.event_counter += 1
-        self.logs.append(f"툴 시작 [{tool.name}]")
+        tool_key = f"{agent.name}_{tool.name}_{self.event_counter}"
+        self.tool_results[tool_key] = {"start_time": timezone.now(), "result": None}
         
     async def on_tool_end(self, context: RunContextWrapper, agent: Agent, tool: Tool, result: str) -> None:
         self.event_counter += 1
-        self.logs.append(f"툴 종료 [{tool.name}: {result}]")
+        tool_key = f"{agent.name}_{tool.name}_{self.event_counter-1}"
+        if tool_key in self.tool_results:
+            self.tool_results[tool_key]["end_time"] = timezone.now()
+            self.tool_results[tool_key]["result"] = result
 
-    async def on_error(self, context: RunContextWrapper, error: Exception) -> None:
-        self.error_logs.append(f"오류 발생: {str(error)}")
+    def get_metrics(self) -> Dict[str, Any]:
+        """에이전트 실행 메트릭 반환"""
+        return {
+            "event_count": self.event_counter,
+            "agent_responses": self.agent_responses,
+            "tool_results": self.tool_results,
+            "handoffs": self.handoffs
+        }
 
 # 데이터 검증을 위한 Pydantic 모델들
 class DataValidationResult(BaseModel):
@@ -66,17 +77,72 @@ class QueryClassification(BaseModel):
     confidence: float  # 0.0 ~ 1.0
     needs_verification: bool  # 정보 검증이 필요한지 여부
 
-# 컨텍스트 모델 정의
+# Django ORM과 통합된 컨텍스트 모델
 class PregnancyContext:
     """임신 관련 정보를 저장하는 컨텍스트 클래스"""
     
-    def __init__(self):
+    def __init__(self, user_id=None, thread_id=None):
         self.pregnancy_week: Optional[int] = None
         self.user_info: Dict[str, Any] = {}
         self.conversation_history: List[Dict[str, Any]] = []
         self.conversation_summary: str = ""
         self.verification_results: List[DataValidationResult] = []
+        self.user_id = user_id
+        self.thread_id = thread_id
         
+        # 유저 ID가 제공된 경우 DB에서 관련 정보 로드
+        if user_id:
+            self._load_user_data()
+    
+    def _load_user_data(self):
+        """사용자 및 관련 임신 정보 로드"""
+        from accounts.models import User, Pregnancy
+        
+        try:
+            user = User.objects.get(user_id=self.user_id)
+            self.user_info = {
+                "name": user.name,
+                "is_pregnant": user.is_pregnant,
+                "email": user.email
+            }
+            
+            # 임신 정보 로드
+            pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
+            if pregnancy:
+                self.pregnancy_week = pregnancy.current_week
+                self.user_info["pregnancy_id"] = str(pregnancy.pregnancy_id)
+                self.user_info["due_date"] = pregnancy.due_date.isoformat() if pregnancy.due_date else None
+                self.user_info["baby_name"] = pregnancy.baby_name
+            
+            # 대화 내역 로드 (최근 5개)
+            if self.thread_id:
+                # 특정 채팅방의 대화
+                try:
+                    chat_room = ChatManager.objects.get(chat_id=self.thread_id)
+                    conversations = LLMConversation.objects.filter(
+                        chat_room=chat_room
+                    ).order_by('-created_at')[:5]
+                except ChatManager.DoesNotExist:
+                    conversations = []
+            else:
+                # 사용자의 최근 대화
+                conversations = LLMConversation.objects.filter(
+                    user=user
+                ).order_by('-created_at')[:5]
+            
+            for conv in conversations:
+                self.conversation_history.insert(0, {
+                    "user": conv.query,
+                    "assistant": conv.response,
+                    "created_at": conv.created_at.isoformat()
+                })
+            
+            # 대화 요약 업데이트
+            self._update_conversation_summary()
+        
+        except Exception as e:
+            print(f"사용자 데이터 로드 중 오류: {str(e)}")
+    
     def update_pregnancy_week(self, week: int):
         """임신 주차 정보 업데이트"""
         self.pregnancy_week = week
@@ -89,10 +155,16 @@ class PregnancyContext:
         """대화 추가 및 컨텍스트 요약 업데이트"""
         self.conversation_history.append({
             "user": user_input,
-            "assistant": assistant_output
+            "assistant": assistant_output,
+            "created_at": timezone.now().isoformat()
         })
         
-        # 대화 요약 업데이트 (최근 3개 대화만 유지)
+        # 대화 요약 업데이트
+        self._update_conversation_summary()
+    
+    def _update_conversation_summary(self):
+        """대화 내역 요약 업데이트"""
+        # 최근 3개 대화만 유지
         recent_conversations = self.conversation_history[-3:] if len(self.conversation_history) > 3 else self.conversation_history
         
         summary = "이전 대화 내용:\n"
@@ -105,6 +177,49 @@ class PregnancyContext:
     def add_verification_result(self, result: DataValidationResult):
         """정보 검증 결과 추가"""
         self.verification_results.append(result)
+    
+    def save_to_db(self, user_input: str, assistant_output: str, 
+                  source_documents=None, using_rag=False):
+        """대화 내용을 DB에 저장"""
+        from accounts.models import User
+        
+        if not self.user_id:
+            return None
+        
+        try:
+            user = User.objects.get(user_id=self.user_id)
+            
+            # 채팅방 관련 처리
+            chat_room = None
+            if self.thread_id:
+                try:
+                    chat_room = ChatManager.objects.get(chat_id=self.thread_id)
+                except ChatManager.DoesNotExist:
+                    # 채팅방이 없으면 생성
+                    from accounts.models import Pregnancy
+                    pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
+                    chat_room = ChatManager.objects.create(
+                        user=user,
+                        pregnancy=pregnancy,
+                        is_active=True
+                    )
+            
+            # 대화 저장
+            conversation = LLMConversation.objects.create(
+                user=user,
+                chat_room=chat_room,
+                query=user_input,
+                response=assistant_output,
+                user_info=self.user_info,
+                source_documents=source_documents or [],
+                using_rag=using_rag
+            )
+            
+            return conversation
+            
+        except Exception as e:
+            print(f"대화 저장 중 오류: {str(e)}")
+            return None
 
 # 가드레일 정의
 @input_guardrail
@@ -149,13 +264,24 @@ def create_agent_instructions(context: PregnancyContext, base_instructions: str)
     """컨텍스트 정보를 활용하여 동적으로 지시사항 생성"""
     instructions = base_instructions
     
+    # 사용자 정보 추가
+    if context.user_info:
+        user_info_str = "사용자 정보:\n"
+        for key, value in context.user_info.items():
+            user_info_str += f"- {key}: {value}\n"
+        instructions += f"\n\n{user_info_str}"
+    
+    # 임신 주차 정보 추가
+    if context.pregnancy_week:
+        instructions += f"\n\n현재 임신 주차: {context.pregnancy_week}주차"
+    
     # 대화 기록이 있다면 추가
     if context.conversation_history:
         instructions += f"\n\n{context.conversation_summary}"
     
     return instructions
 
-# 질문 분류 에이전트 지시사항 추가
+# 질문 분류 에이전트 지시사항
 query_classifier_instructions = """
 당신은 사용자 질문을 분석하고 적절한 카테고리로 분류하는 전문가입니다.
 사용자의 질문을 다음 카테고리 중 하나로 분류하세요:
@@ -172,7 +298,7 @@ query_classifier_instructions = """
 주어진 질문에 가장 적합한 카테고리와 검증 필요 여부를 결정하세요.
 """
 
-# 서브에이전트 기본 지시사항 (변경 없음)
+# 서브에이전트 기본 지시사항
 general_agent_base_instructions = """
 당신은 일반적인 대화를 제공하는 도우미입니다.
 항상 친절한 말로 답변하세요.
@@ -248,417 +374,260 @@ main_agent_base_instructions = """
 모든 답변은 한국어로 제공하세요.
 """
 
-# 에이전트 정의 함수들
-def get_query_classifier_agent() -> Agent:
-    return Agent(
-        name="query_classifier_agent",
-        instructions=query_classifier_instructions,
-        output_type=QueryClassification
-    )
-
-def get_data_verification_agent(context: PregnancyContext) -> Agent:
-    return Agent(
-        name="data_verification_agent",
-        model="gpt-4o",
-        instructions=create_agent_instructions(context, data_verification_agent_base_instructions),
-        output_type=DataValidationResult
-    )
-
-def get_general_agent(context: PregnancyContext) -> Agent:
-    return Agent(
-        name="general_agent",
-        model=model_name,
-        instructions=create_agent_instructions(context, general_agent_base_instructions),
-        handoff_description="일반적인 대화를 제공합니다.",
-        input_guardrails=[check_appropriate_content],
-    )
-
-def get_medical_agent(context: PregnancyContext) -> Agent:
-    return Agent(
-        name="medical_agent",
-        model="gpt-4o",
-        instructions=create_agent_instructions(context, medical_agent_base_instructions),
-        handoff_description="임신 주차별 의학 정보를 제공합니다.",
-        input_guardrails=[check_appropriate_content],
-        output_guardrails=[verify_medical_advice],
-        tools=[
-            WebSearchTool(),
-            FileSearchTool(
-                max_num_results=5,
-                vector_store_ids=[vector_store_id] if vector_store_id else None,
-                include_search_results=True,
-            )
-        ],
-    )
-
-def get_policy_agent(context: PregnancyContext) -> Agent:
-    return Agent(
-        name="policy_agent",
-        model="gpt-4o",
-        instructions=create_agent_instructions(context, policy_agent_base_instructions),
-        handoff_description="임신과 출산 관련 정부 지원 정책 정보와 연락처를 제공합니다.",
-        tools=[WebSearchTool(user_location={"type": "approximate", "city": "South Korea"})],
-        input_guardrails=[check_appropriate_content],
-    )
-
-def get_nutrition_agent(context: PregnancyContext) -> Agent:
-    return Agent(
-        name="nutrition_agent",
-        model=model_name,
-        instructions=create_agent_instructions(context, nutrition_agent_base_instructions),
-        handoff_description="임신 주차별 영양 및 식단 정보를 제공합니다.",
-        input_guardrails=[check_appropriate_content],
-        tools=[
-            WebSearchTool(user_location={"type": "approximate", "city": "South Korea"}),
-            FileSearchTool(
-                max_num_results=5,
-                vector_store_ids=[vector_store_id] if vector_store_id else None,
-                include_search_results=True,
-            )
-        ],
-    )
-
-def get_exercise_agent(context: PregnancyContext) -> Agent:
-    return Agent(
-        name="exercise_agent",
-        model=model_name,
-        instructions=create_agent_instructions(context, exercise_agent_base_instructions),
-        handoff_description="임신 중 안전한 운동 정보를 제공합니다.",
-        input_guardrails=[check_appropriate_content],
-        tools=[
-            WebSearchTool(user_location={"type": "approximate", "city": "South Korea"}),
-            FileSearchTool(
-                max_num_results=5,
-                vector_store_ids=[vector_store_id] if vector_store_id else None,
-                include_search_results=True,
-            )
-        ],
-    )
-
-def get_emotional_support_agent(context: PregnancyContext) -> Agent:
-    return Agent(
-        name="emotional_support_agent",
-        model="gpt-4o",
-        instructions=create_agent_instructions(context, emotional_agent_base_instructions),
-        handoff_description="임신 중 감정 변화와 심리적 건강을 검색을 통해 지원합니다. 혹은 대화중 나온 내용을 바탕으로 격한 감정을 변화가 감지된다면 사용자에게 조언을 제공합니다.",
-        input_guardrails=[check_appropriate_content],
-        tools=[
-            WebSearchTool(user_location={"type": "approximate", "city": "South Korea"}),
-            FileSearchTool(
-                max_num_results=5,
-                vector_store_ids=[vector_store_id] if vector_store_id else None,
-                include_search_results=True,
-            )
-        ],
-    )
-
-def get_main_agent(context: PregnancyContext) -> Agent:
-    """컨텍스트 기반으로 동적으로 메인 에이전트 생성"""
-    general_agent = get_general_agent(context)
-    medical_agent = get_medical_agent(context)
-    policy_agent = get_policy_agent(context)
-    nutrition_agent = get_nutrition_agent(context)
-    exercise_agent = get_exercise_agent(context)
-    emotional_support_agent = get_emotional_support_agent(context)
-    
-    return Agent(
-        name="산모 도우미",
-        model=model_name,
-        instructions=create_agent_instructions(context, main_agent_base_instructions),
-        handoffs=[
-            handoff(general_agent),
-            handoff(medical_agent),
-            handoff(policy_agent),
-            handoff(nutrition_agent),
-            handoff(exercise_agent),
-            handoff(emotional_support_agent),
-        ],
-        input_guardrails=[check_appropriate_content],
-    )
-
-# Django ORM 통합을 위한 클래스
-class FlorenceAgent:
-    """Django ORM과 통합된 Florence 에이전트 클래스"""
+class OpenAIAgentService:
+    """OpenAI 에이전트 서비스 클래스"""
     
     def __init__(self):
-        """초기화"""
-        self.hooks = PregnancyAgentHooks()
+        """서비스 초기화"""
+        self.model_name = model_name
+        self.openai_api_key = openai_api_key
+        self.vector_store_id = vector_store_id
     
-    def _create_context_from_django_models(self, user_id=None, chat_id=None, pregnancy_week=None):
-        """
-        Django 모델에서 컨텍스트 생성
-        - 사용자 ID, 채팅방 ID, 임신 주차 정보를 기반으로 컨텍스트 생성
-        - Django 모델(User, Pregnancy, LLMConversation)에서 정보 조회
-        """
-        context = PregnancyContext()
-        
-        # 임신 주차 설정
-        if pregnancy_week is not None:
-            context.update_pregnancy_week(pregnancy_week)
-        elif user_id:
-            try:
-                # 사용자 ID로 사용자와 임신 정보 조회
-                user = User.objects.get(user_id=user_id)
-                pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
-                
-                if pregnancy and pregnancy.current_week:
-                    context.update_pregnancy_week(pregnancy.current_week)
-                    context.add_user_info('pregnancy_id', str(pregnancy.pregnancy_id))
-                
-                # 사용자 정보 추가
-                context.add_user_info('user_id', str(user.user_id))
-                context.add_user_info('username', user.username)
-                context.add_user_info('name', user.name)
-                
-            except User.DoesNotExist:
-                # 사용자를 찾을 수 없는 경우
-                pass
-        
-        # 채팅 내역 로드
-        if chat_id:
-            try:
-                # 채팅방 ID로 이전 대화 내역 조회
-                conversations = LLMConversation.objects.filter(
-                    chat_room__chat_id=chat_id
-                ).order_by('created_at')[:5]  # 최근 5개 대화만 로드
-                
-                for conv in conversations:
-                    context.add_conversation(conv.query, conv.response)
-            
-            except Exception as e:
-                # 대화 내역 로드 실패
-                pass
-        
-        return context
-    
-    def _save_conversation_to_django(self, user_id, chat_id, query, response, pregnancy_week=None, category=None):
-        """
-        대화 내용을 Django 모델에 저장
-        - 대화 내용을 Django 모델(ChatManager, LLMConversation)에 저장
-        - 채팅방이 존재하지 않는 경우 새로 생성
-        """
-        try:
-            user = User.objects.get(user_id=user_id)
-            
-            # 채팅방 찾기 또는 생성
-            chat_room = None
-            if chat_id:
-                try:
-                    chat_room = ChatManager.objects.get(chat_id=chat_id)
-                except ChatManager.DoesNotExist:
-                    # 채팅방이 없으면 새로 생성
-                    pregnancy = None
-                    if pregnancy_week:
-                        # 임신 주차로 임신 정보 조회
-                        pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
-                    
-                    chat_room = ChatManager.objects.create(
-                        user=user,
-                        pregnancy=pregnancy,
-                        is_active=True
-                    )
-            else:
-                # 채팅방 ID가 없으면 새로 생성
-                pregnancy = None
-                if pregnancy_week:
-                    # 임신 주차로 임신 정보 조회
-                    pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
-                
-                chat_room = ChatManager.objects.create(
-                    user=user,
-                    pregnancy=pregnancy,
-                    is_active=True
-                )
-            
-            # 응답 유형 저장
-            agent_type = category if category else "general"
-            
-            # 대화 저장
-            conversation = LLMConversation.objects.create(
-                user=user,
-                chat_room=chat_room,
-                query=query,
-                response=response,
-                user_info={
-                    "pregnancy_week": pregnancy_week,
-                    "agent_type": agent_type
-                }
-            )
-            
-            return {
-                "conversation_id": str(conversation.id),
-                "chat_id": str(chat_room.chat_id)
-            }
-            
-        except User.DoesNotExist:
-            # 사용자를 찾을 수 없는 경우
-            return None
-        except Exception as e:
-            # 기타 오류
-            return None
-    
-    async def process_and_verify_response(self, context, initial_response, query_type, needs_verification):
-        """응답을 검증하고 적절한 방식으로 출력하는 함수"""
-        if not needs_verification:
-            return initial_response
-        
-        # 응답 검증
-        verification_agent = get_data_verification_agent(context)
-        verification_result = await Runner.run(
-            verification_agent,
-            initial_response,
-            context=context,
-            hooks=self.hooks
+    # 질문 분류 에이전트 정의
+    def get_query_classifier_agent(self) -> Agent:
+        return Agent(
+            name="query_classifier_agent",
+            instructions=query_classifier_instructions,
+            output_type=QueryClassification
         )
+
+    # 데이터 검증 에이전트 정의
+    def get_data_verification_agent(self, context: PregnancyContext) -> Agent:
+        return Agent(
+            name="data_verification_agent",
+            model="gpt-4o",
+            instructions=create_agent_instructions(context, data_verification_agent_base_instructions),
+            output_type=DataValidationResult
+        )
+
+    # 서브에이전트 정의 
+    def get_general_agent(self, context: PregnancyContext) -> Agent:
+        return Agent(
+            name="general_agent",
+            model=self.model_name,
+            instructions=create_agent_instructions(context, general_agent_base_instructions),
+            handoff_description="일반적인 대화를 제공합니다.",
+            input_guardrails=[check_appropriate_content],
+        )
+
+    def get_medical_agent(self, context: PregnancyContext) -> Agent:
+        return Agent(
+            name="medical_agent",
+            model="gpt-4o",
+            instructions=create_agent_instructions(context, medical_agent_base_instructions),
+            handoff_description="임신 주차별 의학 정보를 제공합니다.",
+            input_guardrails=[check_appropriate_content],
+            output_guardrails=[verify_medical_advice],
+            tools=[
+                WebSearchTool(),
+                FileSearchTool(
+                    max_num_results=5,
+                    vector_store_ids=[self.vector_store_id],
+                    include_search_results=True,
+                )
+            ],
+        )
+
+    def get_policy_agent(self, context: PregnancyContext) -> Agent:
+        return Agent(
+            name="policy_agent",
+            model="gpt-4o",
+            instructions=create_agent_instructions(context, policy_agent_base_instructions),
+            handoff_description="임신과 출산 관련 정부 지원 정책 정보와 연락처를 제공합니다.",
+            tools=[WebSearchTool(user_location={"type": "approximate", "city": "South Korea"})],
+            input_guardrails=[check_appropriate_content],
+        )
+
+    def get_nutrition_agent(self, context: PregnancyContext) -> Agent:
+        return Agent(
+            name="nutrition_agent",
+            model=self.model_name,
+            instructions=create_agent_instructions(context, nutrition_agent_base_instructions),
+            handoff_description="임신 주차별 영양 및 식단 정보를 제공합니다.",
+            input_guardrails=[check_appropriate_content],
+            tools=[
+                WebSearchTool(user_location={"type": "approximate", "city": "South Korea"}),
+                FileSearchTool(
+                    max_num_results=5,
+                    vector_store_ids=[self.vector_store_id],
+                    include_search_results=True,
+                )
+            ],
+        )
+
+    def get_exercise_agent(self, context: PregnancyContext) -> Agent:
+        return Agent(
+            name="exercise_agent",
+            model=self.model_name,
+            instructions=create_agent_instructions(context, exercise_agent_base_instructions),
+            handoff_description="임신 중 안전한 운동 정보를 제공합니다.",
+            input_guardrails=[check_appropriate_content],
+            tools=[
+                WebSearchTool(user_location={"type": "approximate", "city": "South Korea"}),
+                FileSearchTool(
+                    max_num_results=5,
+                    vector_store_ids=[self.vector_store_id],
+                    include_search_results=True,
+                )
+            ],
+        )
+
+    def get_emotional_support_agent(self, context: PregnancyContext) -> Agent:
+        return Agent(
+            name="emotional_support_agent",
+            model="gpt-4o",
+            instructions=create_agent_instructions(context, emotional_agent_base_instructions),
+            handoff_description="임신 중 감정 변화와 심리적 건강을 검색을 통해 지원합니다. 혹은 대화중 나온 내용을 바탕으로 격한 감정을 변화가 감지된다면 사용자에게 조언을 제공합니다.",
+            input_guardrails=[check_appropriate_content],
+            tools=[
+                WebSearchTool(user_location={"type": "approximate", "city": "South Korea"}),
+                FileSearchTool(
+                    max_num_results=5,
+                    vector_store_ids=[self.vector_store_id],
+                    include_search_results=True,
+                )
+            ],
+        )
+
+    def get_main_agent(self, context: PregnancyContext) -> Agent:
+        """컨텍스트 기반으로 동적으로 메인 에이전트 생성"""
+        general_agent = self.get_general_agent(context)
+        medical_agent = self.get_medical_agent(context)
+        policy_agent = self.get_policy_agent(context)
+        nutrition_agent = self.get_nutrition_agent(context)
+        exercise_agent = self.get_exercise_agent(context)
+        emotional_support_agent = self.get_emotional_support_agent(context)
         
-        result = verification_result.final_output
-        context.add_verification_result(result)
-        
-        # 검증 결과에 따라 응답 조정
-        final_response = initial_response
-        
-        return final_response
+        return Agent(
+            name="산모 도우미",
+            model=self.model_name,
+            instructions=create_agent_instructions(context, main_agent_base_instructions),
+            handoffs=[
+                handoff(general_agent),
+                handoff(medical_agent),
+                handoff(policy_agent),
+                handoff(nutrition_agent),
+                handoff(exercise_agent),
+                handoff(emotional_support_agent),
+            ],
+            input_guardrails=[check_appropriate_content],
+        )
     
-    async def chat(self, message, user_id=None, chat_id=None, pregnancy_week=None, stream=False):
+    async def process_query(self, 
+                       query_text: str, 
+                       user_id: str = None,
+                       thread_id: str = None, 
+                       pregnancy_week: int = None,
+                       baby_name: str = None,
+                       stream: bool = False) -> Dict[str, Any]:
         """
-        메시지 처리 및 응답 생성
+        사용자 질문 처리 및 응답 생성
         
         Args:
-            message: 사용자 메시지
-            user_id: 사용자 ID (UUID 형식 문자열)
-            chat_id: 채팅방 ID (UUID 형식 문자열)
-            pregnancy_week: 임신 주차
-            stream: 스트리밍 모드 여부
+            query_text: 사용자 질문 텍스트
+            user_id: 사용자 ID
+            thread_id: 대화 스레드 ID
+            pregnancy_week: 임신 주차 (선택적)
+            baby_name: 태아 이름 (선택적)
+            stream: 스트리밍 응답 여부
             
         Returns:
-            응답 결과 딕셔너리
+            생성된 응답 및 메타데이터
         """
-        # 컨텍스트 생성
-        context = self._create_context_from_django_models(user_id, chat_id, pregnancy_week)
+        # 컨텍스트 초기화
+        context = PregnancyContext(user_id=user_id, thread_id=thread_id)
+        
+        # 추가 정보 설정
+        if pregnancy_week:
+            context.update_pregnancy_week(pregnancy_week)
+        if baby_name:
+            context.add_user_info("baby_name", baby_name)
+        
+        # 훅 초기화
+        hooks = PregnancyAgentHooks()
         
         # 질문 분류
-        query_classifier = get_query_classifier_agent()
+        query_classifier = self.get_query_classifier_agent()
         classification_result = await Runner.run(
             query_classifier,
-            message,
-            hooks=self.hooks
+            query_text,
+            hooks=hooks
         )
         
         query_type = classification_result.final_output.category
         needs_verification = classification_result.final_output.needs_verification
         
-        # 메인 에이전트로부터 응답 생성
-        main_agent = get_main_agent(context)
+        # 메인 에이전트 생성
+        main_agent = self.get_main_agent(context)
         
-        # 초기 응답 저장 변수
-        initial_response = ""
+        # 결과 변수
+        result_data = {
+            "response": "",
+            "query_type": query_type,
+            "needs_verification": needs_verification,
+            "metrics": {}
+        }
         
+        # 에이전트 실행
         if stream:
-            # 스트리밍 모드 - 실시간으로 데이터를 반환할 수 있는 generator 함수 구현 필요
-            # 단, Django에서는 보통 비동기 응답을 직접 처리하기 어려우므로
-            # 클라이언트에게 청크 단위로 응답을 보내는 방식을 구현해야 함
-            raise NotImplementedError("스트리밍 모드는 아직 구현되지 않았습니다.")
+            # 스트리밍 응답 (비동기)
+            result = Runner.run_streamed(
+                main_agent,
+                query_text,
+                context=context,
+                hooks=hooks
+            )
+            
+            # 스트리밍 이벤트 반환
+            return result
         else:
-            # 일반 모드
+            # 일반 응답
             result = await Runner.run(
                 main_agent,
-                message,
+                query_text,
                 context=context,
-                hooks=self.hooks
+                hooks=hooks
             )
             
             # 응답 추출
-            initial_response = result.final_output
+            response_text = result.final_output
             
-            # 필요하면 응답 검증
+            # 검증이 필요한 경우
             if needs_verification:
-                final_response = await self.process_and_verify_response(
-                    context, 
-                    initial_response, 
-                    query_type,
-                    needs_verification
+                # 데이터 검증 에이전트 실행
+                verification_agent = self.get_data_verification_agent(context)
+                verification_result = await Runner.run(
+                    verification_agent,
+                    response_text,
+                    context=context,
+                    hooks=hooks
                 )
-            else:
-                final_response = initial_response
+                
+                # 검증 결과 저장
+                validation_result = verification_result.final_output
+                context.add_verification_result(validation_result)
+                
+                # 검증 정보 추가
+                result_data["verification"] = {
+                    "is_accurate": validation_result.is_accurate,
+                    "confidence_score": validation_result.confidence_score,
+                    "reason": validation_result.reason,
+                    "corrected_information": validation_result.corrected_information
+                }
             
-            # 대화 내용을 컨텍스트에 저장
-            context.add_conversation(message, final_response)
+            # 응답 저장
+            result_data["response"] = response_text
+            result_data["metrics"] = hooks.get_metrics()
             
-            # Django 모델에 저장
-            save_result = self._save_conversation_to_django(
-                user_id=user_id,
-                chat_id=chat_id,
-                query=message,
-                response=final_response,
-                pregnancy_week=context.pregnancy_week,
-                category=query_type
-            )
+            # 대화 내역 저장
+            context.add_conversation(query_text, response_text)
             
-            # 최종 응답 생성
-            response = {
-                "response": final_response,
-                "query_type": query_type,
-                "pregnancy_week": context.pregnancy_week,
-                "verified": needs_verification
-            }
+            # DB에 대화 저장
+            conversation = context.save_to_db(query_text, response_text)
+            if conversation:
+                result_data["conversation_id"] = conversation.id
             
-            # 저장 결과가 있으면 응답에 추가
-            if save_result:
-                response.update(save_result)
-            
-            return response
+            return result_data
 
-# 간편 함수 구현
-async def chat_with_florence_async(message, user_id=None, chat_id=None, pregnancy_week=None, stream=False):
-    """
-    비동기 Florence 에이전트 호출 함수
-    
-    Args:
-        message: 사용자 메시지
-        user_id: 사용자 ID (UUID 형식 문자열)
-        chat_id: 채팅방 ID (UUID 형식 문자열)
-        pregnancy_week: 임신 주차
-        stream: 스트리밍 모드 여부
-        
-    Returns:
-        응답 결과 딕셔너리
-    """
-    agent = FlorenceAgent()
-    return await agent.chat(message, user_id, chat_id, pregnancy_week, stream)
-
-# 동기식 함수 - Django 뷰에서 사용 가능
-def chat_with_florence(message, user_id=None, chat_id=None, pregnancy_week=None, stream=False):
-    """
-    동기식 Florence 에이전트 호출 함수 (Django 뷰에서 사용)
-    
-    Args:
-        message: 사용자 메시지
-        user_id: 사용자 ID (UUID 형식 문자열)
-        chat_id: 채팅방 ID (UUID 형식 문자열)
-        pregnancy_week: 임신 주차
-        stream: 스트리밍 모드 여부
-        
-    Returns:
-        응답 결과 딕셔너리
-    """
-    # asyncio.run()을 사용해 비동기 함수를 동기적으로 실행
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        result = loop.run_until_complete(chat_with_florence_async(message, user_id, chat_id, pregnancy_week, stream))
-        return result
-    finally:
-        loop.close()
-
-# 테스트 함수
-if __name__ == "__main__":
-    # 스크립트로 직접 실행시
-    import asyncio
-    
-    async def test():
-        agent = FlorenceAgent()
-        response = await agent.chat("임신 10주차에 좋은 음식은 무엇인가요?", pregnancy_week=10)
-        print(response)
-    
-    asyncio.run(test()) 
+# 서비스 인스턴스 생성
+openai_agent_service = OpenAIAgentService() 
