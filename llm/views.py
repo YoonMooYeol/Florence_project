@@ -787,92 +787,29 @@ class FlorenceAgentView(generics.GenericAPIView):
             # 로그 출력
             logger.info(f"Florence 에이전트 질문: '{query_text}' (user_id: {user_id}, pregnancy_week: {pregnancy_week})")
             
-            # Florence 에이전트 초기화
-            from .agent import Florence, chat_with_florence
+            # OpenAI 에이전트 호출 (langgraph 대신)
+            from .openai_agent import chat_with_florence
             
-            # 에이전트 호출
-            # 이미 구현된 함수를 사용
+            # 에이전트 호출 (스트리밍 없이)
             result = chat_with_florence(
                 message=query_text,
                 user_id=user_id,
-                thread_id=thread_id,
+                chat_id=thread_id,
                 pregnancy_week=pregnancy_week,
                 stream=False
             )
             
-            # 응답 텍스트 추출
-            response_text = result.get('response', '')
+            # 응답에 추가 정보 설정
+            result.update({
+                "agent_type": result.get("query_type", "Florence"),  # query_type 추가됨
+                "baby_name": baby_name,
+            })
             
-            # 응답 저장 (채팅방에 직접 저장)
-            try:
-                user = User.objects.get(user_id=user_id)
+            return Response(result, status=status.HTTP_200_OK)
                 
-                # thread_id가 채팅방 ID인 경우 (UUID 형식)
-                if thread_id != 'default_thread':
-                    try:
-                        from uuid import UUID
-                        chat_id = UUID(thread_id)  # 문자열을 UUID로 변환
-                        
-                        # 채팅방 조회
-                        from .models import ChatManager
-                        chat_room = ChatManager.objects.filter(chat_id=chat_id).first()
-                        
-                        if chat_room:
-                            # 해당 채팅방에 메시지 저장
-                            conversation = LLMConversation.objects.create(
-                                user=user,
-                                chat_room=chat_room,
-                                query=query_text,
-                                response=response_text,
-                                user_info={
-                                    "name": user_id,
-                                    "baby_name": baby_name,
-                                    "pregnancy_week": pregnancy_week
-                                }
-                            )
-                            logger.info(f"메시지가 채팅방 {chat_id}에 저장되었습니다.")
-                            return Response({
-                                "response": response_text,
-                                "agent_type": "Florence",
-                                "pregnancy_week": pregnancy_week,
-                                "conversation_id": conversation.id
-                            }, status=status.HTTP_200_OK)
-                    except (ValueError, TypeError):
-                        # UUID 변환 실패 시 기본 저장 로직 사용
-                        logger.warning(f"thread_id {thread_id}를 UUID로 변환할 수 없습니다.")
-                
-                # 채팅방이 없거나 thread_id가 유효하지 않은 경우 (기본 저장)
-                conversation = LLMConversation.objects.create(
-                    user=user,
-                    query=query_text,
-                    response=response_text,
-                    user_info={
-                        "name": user_id,
-                        "baby_name": baby_name,
-                        "pregnancy_week": pregnancy_week
-                    }
-                )
-                
-                return Response({
-                    "response": response_text,
-                    "agent_type": "Florence",
-                    "pregnancy_week": pregnancy_week,
-                    "conversation_id": conversation.id
-                }, status=status.HTTP_200_OK)
-                
-            except Exception as save_error:
-                logger.warning(f"응답 저장 중 오류 (무시됨): {str(save_error)}")
-                # 저장 실패해도 응답은 정상적으로 반환
-                return Response({
-                    "response": response_text,
-                    "agent_type": "Florence",
-                    "pregnancy_week": pregnancy_week
-                }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"Florence 에이전트 API 오류: {str(e)}")
-            logger.exception("상세 오류:")
+        except Exception as error:
+            logger.error(f"Florence 에이전트 오류: {str(error)}")
             return Response(
-                {"error": "서버 오류가 발생했습니다. 나중에 다시 시도해주세요."},
+                {"error": f"처리 중 오류가 발생했습니다: {str(error)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
