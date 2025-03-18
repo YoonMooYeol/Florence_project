@@ -152,7 +152,7 @@ class EmailVerification(models.Model):
 
 class Follow(models.Model):
     """ follower - following 관계 저장 """
-    name = models.CharField(max_length=255, primary_key=True, blank=False, null=False)
+    id = models.AutoField(primary_key=True)  # 명시적으로 id 필드 추가
     follower = models.ForeignKey(User, on_delete=models.CASCADE, related_name='following')
     following = models.ForeignKey(User, on_delete=models.CASCADE, related_name='followers')
     created_at = models.DateTimeField(auto_now_add=True)
