@@ -105,3 +105,26 @@ class BabyDiary(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.diary_date} 아기 일기"
+
+
+class BabyDiaryPhoto(models.Model):
+    """태교일기 사진 모델"""
+    photo_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # BabyDiary와 1:N 관계 설정
+    babydiary = models.ForeignKey(
+        'BabyDiary',
+        related_name='photos',
+        on_delete=models.CASCADE,
+        verbose_name='태교일기'
+    )
+
+    image = models.ImageField(upload_to='baby_diary_photos/%Y/%m/%d/', verbose_name='사진')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = '태교일기 사진'
+        verbose_name_plural = '태교일기 사진 목록'
+
+    def __str__(self):
+        return f"{self.babydiary.diary_date} 태교일기 사진"
