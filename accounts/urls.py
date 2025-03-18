@@ -1,4 +1,3 @@
-
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
@@ -48,11 +47,11 @@ urlpatterns = [
     path('send_register/', RegisterSendEmailView.as_view(), name='register-send'),
     path('check_register/', RegisterCheckView.as_view(), name='check-register'),
 
-    path('follow/', FollowUnfollowView.as_view(), name='follow'),
+    path('follow/', FollowUnfollowView.as_view(), name='follow'),  # POST/DELETE 요청으로 user_id 전달
     path('follow/following/', FollowListView.as_view(), name='following-list'),
     path('follow/followers/', FollowersListView.as_view(), name='followers-list'),
 
-    path('search/', RetrieveUserByEmailView.as_view(), name='search'),
+    path('search/', RetrieveUserByEmailView.as_view(), name='search'),  # 이메일로 사용자 검색
 
     path('users/photos/', include(photo_profile_router.urls), name='photos-profile'),
     path('users/photos/', include(photo_diary_router.urls), name='photos-diary'),
