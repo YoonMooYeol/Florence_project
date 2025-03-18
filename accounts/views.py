@@ -916,18 +916,22 @@ class FollowUnfollowView(GenericAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = FollowUserSerializer
 
-    def get_following_user(self, email=None):
-        """ 이메일을 이용하여 사용자 객체를 가져옴 """
-        if email:
+    def get_following_user(self, user_id=None):
+        """ user_id를 이용하여 사용자 객체를 가져옴 """
+        if user_id:
             try:
-                return User.objects.get(email=email)
+                return User.objects.get(user_id=user_id)
             except User.DoesNotExist:
                 return None
         return None
 
-    def post(self, request, email=None):
+    def post(self, request, *args, **kwargs):
         """ 팔로우 기능 """
-        following_user = self.get_following_user(email)
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({"error": "팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        following_user = self.get_following_user(user_id)
         follower = request.user
 
         if not following_user:
@@ -942,10 +946,17 @@ class FollowUnfollowView(GenericAPIView):
                             status=status.HTTP_201_CREATED)
         return Response({"message": "이미 팔로우 중입니다."}, status=status.HTTP_200_OK)
 
-    def delete(self, request, email=None):
+    def delete(self, request, *args, **kwargs):
         """ 언팔로우 기능 """
-        following_user = self.get_following_user(email)
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({"error": "언팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        following_user = self.get_following_user(user_id)
         follower = request.user
+
+        if not following_user:
+            return Response({"error": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
 
         # 팔로우 관계가 존재하는지 확인 후 삭제
         try:
@@ -963,6 +974,10 @@ class FollowListView(ListAPIView):
 
     def get_queryset(self):
         return Follow.objects.filter(follower=self.request.user)
+        
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        return context
 
 class FollowersListView(ListAPIView):
     serializer_class = FollowUserSerializer
@@ -970,7 +985,10 @@ class FollowersListView(ListAPIView):
 
     def get_queryset(self):
         return Follow.objects.filter(following=self.request.user)
-
+        
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        return context
 
 
 class RetrieveUserByEmailView(GenericAPIView):
@@ -984,7 +1002,21 @@ class RetrieveUserByEmailView(GenericAPIView):
 
         try:
             user = User.objects.get(email=email)
-            user_data = {'name': user.name}
+            user_data = {
+                'user_id': str(user.user_id),
+                'name': user.name
+            }
+            
+            # 현재 사용자가 인증되어 있다면 팔로우 여부 확인
+            if request.user.is_authenticated:
+                is_following = Follow.objects.filter(
+                    follower=request.user,
+                    following=user
+                ).exists()
+                user_data['is_following'] = is_following
+            else:
+                user_data['is_following'] = False
+                
             return Response(user_data, status=status.HTTP_200_OK)
         except User.DoesNotExist:
             return Response({"detail": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
