@@ -15,7 +15,7 @@ from asgiref.sync import sync_to_async
 # 환경 변수 로드
 load_dotenv()
 
-model_name = os.getenv("MODEL_NAME") or "gpt-4o"
+model_name = os.getenv("LLM_MODEL") or "gpt-4o-mini"
 openai_api_key = os.getenv("OPENAI_API_KEY")
 vector_store_id = os.getenv("VECTOR_STORE_ID")  # 벡터 스토어 ID
 
@@ -440,6 +440,7 @@ class OpenAIAgentService:
     def get_query_classifier_agent(self) -> Agent:
         return Agent(
             name="query_classifier_agent",
+            model=self.model_name,
             instructions=query_classifier_instructions,
             output_type=QueryClassification
         )
@@ -448,7 +449,7 @@ class OpenAIAgentService:
     def get_data_verification_agent(self, context: PregnancyContext) -> Agent:
         return Agent(
             name="data_verification_agent",
-            model="gpt-4o",
+            model=self.model_name,
             instructions=create_agent_instructions(context, data_verification_agent_base_instructions),
             output_type=DataValidationResult
         )
@@ -466,7 +467,7 @@ class OpenAIAgentService:
     def get_medical_agent(self, context: PregnancyContext) -> Agent:
         return Agent(
             name="medical_agent",
-            model="gpt-4o",
+            model=self.model_name,
             instructions=create_agent_instructions(context, medical_agent_base_instructions),
             handoff_description="임신 주차별 의학 정보를 제공합니다.",
             input_guardrails=[check_appropriate_content],
@@ -484,7 +485,7 @@ class OpenAIAgentService:
     def get_policy_agent(self, context: PregnancyContext) -> Agent:
         return Agent(
             name="policy_agent",
-            model="gpt-4o",
+            model=self.model_name,
             instructions=create_agent_instructions(context, policy_agent_base_instructions),
             handoff_description="임신과 출산 관련 정부 지원 정책 정보와 연락처를 제공합니다.",
             tools=[WebSearchTool(user_location={"type": "approximate", "city": "South Korea"})],
@@ -528,7 +529,7 @@ class OpenAIAgentService:
     def get_emotional_support_agent(self, context: PregnancyContext) -> Agent:
         return Agent(
             name="emotional_support_agent",
-            model="gpt-4o",
+            model=self.model_name,
             instructions=create_agent_instructions(context, emotional_agent_base_instructions),
             handoff_description="임신 중 감정 변화와 심리적 건강을 검색을 통해 지원합니다. 혹은 대화중 나온 내용을 바탕으로 격한 감정을 변화가 감지된다면 사용자에게 조언을 제공합니다.",
             input_guardrails=[check_appropriate_content],
@@ -596,6 +597,7 @@ class OpenAIAgentService:
         try:
             # 컨텍스트 초기화
             print(f"컨텍스트 초기화: user_id={user_id}, thread_id={thread_id}")
+            print(f"질문: {query_text}")
             context = PregnancyContext(user_id=user_id, thread_id=thread_id)
             
             if user_id:
@@ -620,20 +622,42 @@ class OpenAIAgentService:
             # 질문 분류
             print("질문 분류 시작")
             query_classifier = self.get_query_classifier_agent()
-            try:
-                classification_result = await Runner.run(
-                    query_classifier,
-                    query_text,
-                    hooks=hooks
-                )
-                print(f"질문 분류 완료: {classification_result.final_output.category}")
-            except Exception as e:
-                print(f"질문 분류 중 오류: {e}")
-                print(traceback.format_exc())
-                raise e
-            
-            query_type = classification_result.final_output.category
-            needs_verification = classification_result.final_output.needs_verification
+            print("질문 분류 에이전트 생성함")
+            # try:
+            #     classification_result = await Runner.run(
+            #         query_classifier,
+            #         query_text,
+            #         hooks=hooks
+            #     )
+            #     print(f"질문 분류 완료: {classification_result.final_output.category}")
+            # except Exception as e:
+            #     print(f"질문 분류 중 오류: {e}")
+            #     print(traceback.format_exc())
+            #     raise e
+
+            # query_type = classification_result.final_output.category
+            # needs_verification = classification_result.final_output.needs_verification
+
+            # 최대 3번 재시도
+            for attempt in range(3):
+                try:
+                    classification_result = await asyncio.wait_for(
+                        Runner.run(query_classifier, query_text, hooks=hooks),
+                        timeout=5.0
+                    )
+                    query_type = classification_result.final_output.category
+                    needs_verification = classification_result.final_output.needs_verification
+                    print(f"질문 쉽게 분류 완료: {query_type}, {needs_verification}")
+                    break  # 성공하면 루프 탈출
+
+                except (asyncio.TimeoutError, Exception) as e:
+                    print(f"질문 분류 시도 {attempt+1} 실패: {e}")
+                    if attempt == 2:  # 마지막 시도
+                        # 대체 처리 로직
+                        query_type = "general"
+                        needs_verification = False
+                        print(f"질문 겨우 분류 완료: {query_type}, {needs_verification}")
+        
             
             # 메인 에이전트 생성
             print("메인 에이전트 생성")

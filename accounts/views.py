@@ -21,7 +21,7 @@ from django.contrib.auth.hashers import get_random_string
 from django.http import HttpResponseRedirect
 from django.contrib.auth import authenticate
 from django.conf import settings
-from django.core.mail import get_connection, EmailMessage
+from django.core.mail import get_connection, EmailMultiAlternatives
 
 from .serializers import (
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
@@ -229,14 +229,37 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
                 password=config['HOST_PASSWORD'],
 
             )
-            email = EmailMessage(
+            # EmailMessage 대신 EmailMultiAlternatives 사용
+            email = EmailMultiAlternatives(
                 subject="[누리달] 💡비밀번호 재설정 인증 코드 안내 💡",
                 body=f"안녕하세요\n비밀번호 재설정 인증코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
                 from_email=config['HOST_USER'],
                 to=[recipient_email],
                 connection=connection,
             )
-            email.attach_alternative(html_content, "text/html")  # HTML로 변환
+            
+            # html_content가 제공된 경우에만 HTML 콘텐츠 추가
+            if html_content:
+                email.attach_alternative(html_content, "text/html")  # HTML로 변환
+            else:
+                # 기본 HTML 콘텐츠 생성
+                default_html = f"""
+                <html>
+                <body>
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                        <h2 style="color: #333;">누리달 비밀번호 재설정</h2>
+                        <p>안녕하세요,</p>
+                        <p>비밀번호 재설정 인증코드는 다음과 같습니다:</p>
+                        <div style="background-color: #f7f7f7; padding: 15px; font-size: 24px; font-weight: bold; text-align: center; margin: 20px 0; border-radius: 5px;">
+                            {code}
+                        </div>
+                        <p>이 코드는 10분 후에 만료됩니다.</p>
+                        <p>감사합니다,<br>누리달 팀</p>
+                    </div>
+                </body>
+                </html>
+                """
+                email.attach_alternative(default_html, "text/html")
 
             # 이메일 전송
             email.send(fail_silently=False)
