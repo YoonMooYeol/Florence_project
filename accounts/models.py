@@ -4,6 +4,8 @@ from django.utils import timezone
 from django.utils.timezone import now
 import uuid
 import datetime
+import os
+
 
 
 
@@ -163,24 +165,18 @@ class Follow(models.Model):
     def __str__(self):
         return f"{self.follower} -> {self.following}"
 
-
-
 def user_photo_path(instance, filename):
-    """사용자의 ID와 사진 카테고리에 따라 업로드 경로를 지정"""
-    return f"photos/{instance.user_id}/{instance.category}/{filename}"
+    return f'users/{instance.user_id}/photos/{filename}'
 
 class Photo(models.Model):
-    category_choices = (
-        ("profile","profile photo"),
-        ("diary","diary photo"),
-    )
-
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="photos")
     image = models.ImageField(upload_to=user_photo_path, null=True, blank=True)
-    category = models.CharField(max_length=255, choices=category_choices, default="profile")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        unique_together = ['user']  # 사용자별로 하나의 프로필 사진만 등록 가능하도록 제한
+
     def __str__(self):
-        return f"{self.user.name}-{self.category}"
+        return f"{self.user.username}'s photo"
 
