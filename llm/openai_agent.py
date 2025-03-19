@@ -587,103 +587,154 @@ class OpenAIAgentService:
         Returns:
             생성된 응답 및 메타데이터
         """
-        # 컨텍스트 초기화
-        context = PregnancyContext(user_id=user_id, thread_id=thread_id)
+        import sys
+        import traceback
         
-        if user_id:
-            await context.load_user_data_async()
+        print(f"========== process_query 시작 (stream={stream}) ==========")
+        print(f"thread_id in asyncio: {id(asyncio.current_task())}")
         
-        # 추가 정보 설정
-        if pregnancy_week:
-            context.update_pregnancy_week(pregnancy_week)
-        if baby_name:
-            context.add_user_info("baby_name", baby_name)
-        
-        # 훅 초기화
-        hooks = PregnancyAgentHooks()
-        
-        # 질문 분류
-        query_classifier = self.get_query_classifier_agent()
-        classification_result = await Runner.run(
-            query_classifier,
-            query_text,
-            hooks=hooks
-        )
-        
-        query_type = classification_result.final_output.category
-        needs_verification = classification_result.final_output.needs_verification
-        
-        # 메인 에이전트 생성
-        main_agent = self.get_main_agent(context)
-        
-        # 결과 변수
-        result_data = {
-            "response": "",
-            "query_type": query_type,
-            "needs_verification": needs_verification,
-            "metrics": {}
-        }
-        
-        # 에이전트 실행
-        if stream:
-            # 스트리밍 응답 (비동기)
-            result = Runner.run_streamed(
-                main_agent,
-                query_text,
-                context=context,
-                hooks=hooks
-            )
+        try:
+            # 컨텍스트 초기화
+            print(f"컨텍스트 초기화: user_id={user_id}, thread_id={thread_id}")
+            context = PregnancyContext(user_id=user_id, thread_id=thread_id)
             
-            # 스트리밍 이벤트 반환
-            return result
-        else:
-            # 일반 응답
-            result = await Runner.run(
-                main_agent,
-                query_text,
-                context=context,
-                hooks=hooks
-            )
+            if user_id:
+                print("사용자 데이터 로드 시작")
+                try:
+                    await context.load_user_data_async()
+                    print("사용자 데이터 로드 완료")
+                except Exception as e:
+                    print(f"사용자 데이터 로드 중 오류: {e}")
+                    print(traceback.format_exc())
             
-            # 응답 추출
-            response_text = result.final_output
+            # 추가 정보 설정
+            if pregnancy_week:
+                context.update_pregnancy_week(pregnancy_week)
+            if baby_name:
+                context.add_user_info("baby_name", baby_name)
             
-            # 검증이 필요한 경우
-            if needs_verification:
-                # 데이터 검증 에이전트 실행
-                verification_agent = self.get_data_verification_agent(context)
-                verification_result = await Runner.run(
-                    verification_agent,
-                    response_text,
+            # 훅 초기화
+            print("PregnancyAgentHooks 초기화")
+            hooks = PregnancyAgentHooks()
+            
+            # 질문 분류
+            print("질문 분류 시작")
+            query_classifier = self.get_query_classifier_agent()
+            try:
+                classification_result = await Runner.run(
+                    query_classifier,
+                    query_text,
+                    hooks=hooks
+                )
+                print(f"질문 분류 완료: {classification_result.final_output.category}")
+            except Exception as e:
+                print(f"질문 분류 중 오류: {e}")
+                print(traceback.format_exc())
+                raise e
+            
+            query_type = classification_result.final_output.category
+            needs_verification = classification_result.final_output.needs_verification
+            
+            # 메인 에이전트 생성
+            print("메인 에이전트 생성")
+            main_agent = self.get_main_agent(context)
+            
+            # 결과 변수
+            result_data = {
+                "response": "",
+                "query_type": query_type,
+                "needs_verification": needs_verification,
+                "metrics": {}
+            }
+            
+            # 에이전트 실행
+            if stream:
+                # 스트리밍 응답 (비동기)
+                print("스트리밍 모드로 에이전트 실행")
+                try:
+                    print("Runner.run_streamed 호출 직전")
+                    result = Runner.run_streamed(
+                        main_agent,
+                        query_text,
+                        context=context,
+                        hooks=hooks
+                    )
+                    print(f"Runner.run_streamed 반환됨: {type(result)}")
+                    
+                    # stream_events 메소드 호출 테스트
+                    print("stream_events 메소드 테스트")
+                    try:
+                        # 실제로 호출하진 않고 존재 여부만 확인
+                        if hasattr(result, 'stream_events'):
+                            print(f"stream_events 메소드 존재")
+                            # print(f"stream_events 메소드 존재: {result.stream_events}")
+                        else:
+                            print("stream_events 메소드가 존재하지 않음!")
+                    except Exception as e:
+                        print(f"stream_events 메소드 테스트 중 오류: {e}")
+                    
+                    print("스트리밍 응답 객체 반환 준비")
+                    return result
+                except Exception as e:
+                    print(f"스트리밍 에이전트 실행 중 오류: {e}")
+                    print(traceback.format_exc())
+                    raise e
+            else:
+                # 일반 응답
+                print("일반 모드로 에이전트 실행")
+                result = await Runner.run(
+                    main_agent,
+                    query_text,
                     context=context,
                     hooks=hooks
                 )
                 
-                # 검증 결과 저장
-                validation_result = verification_result.final_output
-                context.add_verification_result(validation_result)
+                # 응답 추출
+                response_text = result.final_output
                 
-                # 검증 정보 추가
-                result_data["verification"] = {
-                    "is_accurate": validation_result.is_accurate,
-                    "confidence_score": validation_result.confidence_score,
-                    "reason": validation_result.reason,
-                    "corrected_information": validation_result.corrected_information
-                }
-            
-            # 응답 저장
-            result_data["response"] = response_text
-            result_data["metrics"] = hooks.get_metrics()
-            
-            # 대화 내역 저장
-            context.add_conversation(query_text, response_text)
-            
-            # DB에 대화 저장
-            conversation = await context.save_to_db_async(query_text, response_text)
-            if conversation:
-                result_data["conversation_id"] = conversation.id
+                # 검증이 필요한 경우
+                if needs_verification:
+                    # 데이터 검증 에이전트 실행
+                    verification_agent = self.get_data_verification_agent(context)
+                    verification_result = await Runner.run(
+                        verification_agent,
+                        response_text,
+                        context=context,
+                        hooks=hooks
+                    )
+                    
+                    # 검증 결과 저장
+                    validation_result = verification_result.final_output
+                    context.add_verification_result(validation_result)
+                    
+                    # 검증 정보 추가
+                    result_data["verification"] = {
+                        "is_accurate": validation_result.is_accurate,
+                        "confidence_score": validation_result.confidence_score,
+                        "reason": validation_result.reason,
+                        "corrected_information": validation_result.corrected_information
+                    }
+                
+                # 응답 저장
+                result_data["response"] = response_text
+                result_data["metrics"] = hooks.get_metrics()
+                
+                # 대화 내역 저장
+                context.add_conversation(query_text, response_text)
+                
+                # DB에 대화 저장
+                conversation = await context.save_to_db_async(query_text, response_text)
+                if conversation:
+                    result_data["conversation_id"] = conversation.id
 
-            return result_data
+                print("일반 응답 반환 준비")
+                return result_data
+        except Exception as e:
+            print(f"process_query 전역 예외: {e}")
+            print(traceback.format_exc())
+            raise e
+        finally:
+            print(f"========== process_query 종료 ==========")
 
 # 서비스 인스턴스 생성
 openai_agent_service = OpenAIAgentService() 
