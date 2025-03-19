@@ -9,11 +9,13 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from .models import LLMConversation, ChatManager
+import asyncio
+from asgiref.sync import sync_to_async
 
 # 환경 변수 로드
 load_dotenv()
 
-model_name = os.getenv("MODEL_NAME") or "gpt-4o"
+model_name = os.getenv("LLM_MODEL") or "gpt-4o-mini"
 openai_api_key = os.getenv("OPENAI_API_KEY")
 vector_store_id = os.getenv("VECTOR_STORE_ID")  # 벡터 스토어 ID
 
@@ -90,58 +92,66 @@ class PregnancyContext:
         self.user_id = user_id
         self.thread_id = thread_id
         
-        # 유저 ID가 제공된 경우 DB에서 관련 정보 로드
-        if user_id:
-            self._load_user_data()
+        # 유저 ID가 제공된 경우 DB에서 관련 정보 로드 -> 여기서 DB를 바로 로드하지 않음!
+        # if user_id:
+        #     self._load_user_data()
     
-    def _load_user_data(self):
-        """사용자 및 관련 임신 정보 로드"""
+    async def load_user_data_async(self):
+        """
+        ORM을 비동기 문맥에서 호출할 수 있도록 sync_to_async 사용.
+        실제 DB에서 사용자 및 임신 정보, 대화 등을 로드.
+        """
         from accounts.models import User, Pregnancy
-        
+
+        # 1) user 불러오기 (동기 ORM -> sync_to_async)
         try:
-            user = User.objects.get(user_id=self.user_id)
-            self.user_info = {
-                "name": user.name,
-                "is_pregnant": user.is_pregnant,
-                "email": user.email
-            }
-            
-            # 임신 정보 로드
-            pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
-            if pregnancy:
-                self.pregnancy_week = pregnancy.current_week
-                self.user_info["pregnancy_id"] = str(pregnancy.pregnancy_id)
-                self.user_info["due_date"] = pregnancy.due_date.isoformat() if pregnancy.due_date else None
-                self.user_info["baby_name"] = pregnancy.baby_name
-            
-            # 대화 내역 로드 (최근 5개)
-            if self.thread_id:
-                # 특정 채팅방의 대화
-                try:
-                    chat_room = ChatManager.objects.get(chat_id=self.thread_id)
-                    conversations = LLMConversation.objects.filter(
-                        chat_room=chat_room
-                    ).order_by('-created_at')[:5]
-                except ChatManager.DoesNotExist:
-                    conversations = []
+            user = await sync_to_async(User.objects.get)(user_id=self.user_id)
+        except User.DoesNotExist:
+            print(f"사용자 데이터 로드 중 오류: user_id={self.user_id} 해당 사용자가 없습니다.")
+            return
+
+        self.user_info = {
+            "name": user.name,
+            "is_pregnant": user.is_pregnant,
+            "email": user.email,
+        }
+
+        # 2) 임신 정보 불러오기
+        pregnancy = await sync_to_async(Pregnancy.objects.filter(user=user).order_by('-created_at').first)()
+        if pregnancy:
+            self.pregnancy_week = pregnancy.current_week
+            self.user_info["pregnancy_id"] = str(pregnancy.pregnancy_id)
+            self.user_info["due_date"] = pregnancy.due_date.isoformat() if pregnancy.due_date else None
+            self.user_info["baby_name"] = pregnancy.baby_name
+
+        # 3) 대화 로드 (최근 5개)
+        from .models import ChatManager, LLMConversation
+
+        if self.thread_id:
+            # 특정 채팅방
+            chat_room = await sync_to_async(ChatManager.objects.filter(chat_id=self.thread_id).first)()
+            if chat_room:
+                conversations = await sync_to_async(
+                    lambda: list(LLMConversation.objects.filter(chat_room=chat_room).order_by('-created_at')[:5])
+                )()
             else:
-                # 사용자의 최근 대화
-                conversations = LLMConversation.objects.filter(
-                    user=user
-                ).order_by('-created_at')[:5]
-            
-            for conv in conversations:
-                self.conversation_history.insert(0, {
-                    "user": conv.query,
-                    "assistant": conv.response,
-                    "created_at": conv.created_at.isoformat()
-                })
-            
-            # 대화 요약 업데이트
-            self._update_conversation_summary()
-        
-        except Exception as e:
-            print(f"사용자 데이터 로드 중 오류: {str(e)}")
+                conversations = []
+        else:
+            # 사용자의 전체 최근 대화
+            conversations = await sync_to_async(
+                lambda: list(LLMConversation.objects.filter(user=user).order_by('-created_at')[:5])
+            )()
+
+        # 4) self.conversation_history 채우기
+        for conv in reversed(conversations):
+            self.conversation_history.append({
+                "user": conv.query,
+                "assistant": conv.response,
+                "created_at": conv.created_at.isoformat()
+            })
+
+        # 5) 대화 요약
+        self._update_conversation_summary()
     
     def update_pregnancy_week(self, week: int):
         """임신 주차 정보 업데이트"""
@@ -178,48 +188,91 @@ class PregnancyContext:
         """정보 검증 결과 추가"""
         self.verification_results.append(result)
     
-    def save_to_db(self, user_input: str, assistant_output: str, 
-                  source_documents=None, using_rag=False):
-        """대화 내용을 DB에 저장"""
-        from accounts.models import User
-        
+    async def save_to_db_async(self, user_input: str, assistant_output: str,
+                               source_documents=None, using_rag=False):
+        """
+        대화 내용을 DB에 저장 (비동기 -> sync_to_async)
+        """
+        from accounts.models import User, Pregnancy
+        from .models import ChatManager, LLMConversation
+
         if not self.user_id:
             return None
-        
+
         try:
-            user = User.objects.get(user_id=self.user_id)
-            
-            # 채팅방 관련 처리
-            chat_room = None
-            if self.thread_id:
-                try:
-                    chat_room = ChatManager.objects.get(chat_id=self.thread_id)
-                except ChatManager.DoesNotExist:
-                    # 채팅방이 없으면 생성
-                    from accounts.models import Pregnancy
-                    pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
-                    chat_room = ChatManager.objects.create(
-                        user=user,
-                        pregnancy=pregnancy,
-                        is_active=True
-                    )
-            
-            # 대화 저장
-            conversation = LLMConversation.objects.create(
-                user=user,
-                chat_room=chat_room,
-                query=user_input,
-                response=assistant_output,
-                user_info=self.user_info,
-                source_documents=source_documents or [],
-                using_rag=using_rag
-            )
-            
-            return conversation
-            
-        except Exception as e:
-            print(f"대화 저장 중 오류: {str(e)}")
+            user = await sync_to_async(User.objects.get)(user_id=self.user_id)
+        except User.DoesNotExist:
+            print(f"대화 저장 중 오류: user_id={self.user_id} 해당 사용자가 없습니다.")
             return None
+
+        # 채팅방 관련 처리
+        chat_room = None
+        if self.thread_id:
+            chat_room = await sync_to_async(ChatManager.objects.filter(chat_id=self.thread_id).first)()
+            if not chat_room:
+                # 없으면 생성
+                pregnancy = await sync_to_async(
+                    lambda: Pregnancy.objects.filter(user=user).order_by('-created_at').first()
+                )()
+                chat_room = await sync_to_async(ChatManager.objects.create)(
+                    user=user, pregnancy=pregnancy, is_active=True
+                )
+
+        # 대화 저장
+        conversation = await sync_to_async(LLMConversation.objects.create)(
+            user=user,
+            chat_room=chat_room,
+            query=user_input,
+            response=assistant_output,
+            user_info=self.user_info,
+            source_documents=source_documents or [],
+            using_rag=using_rag
+        )
+        return conversation
+    
+    def save_to_db(self, user_input: str, assistant_output: str,
+                   source_documents=None, using_rag=False):
+        """
+        (새로 추가)
+        동기 ORM으로 DB에 대화 저장.
+        동기 뷰 내부에서 편하게 호출하기 위함.
+        """
+        from accounts.models import User, Pregnancy
+        from .models import ChatManager, LLMConversation
+
+        if not self.user_id:
+            return None
+
+        try:
+            user = User.objects.get(user_id=self.user_id)  # 동기 ORM
+        except User.DoesNotExist:
+            print(f"대화 저장 중 오류: user_id={self.user_id} 해당 사용자가 없습니다.")
+            return None
+
+        # 채팅방 관련 처리
+        chat_room = None
+        if self.thread_id:
+            chat_room = ChatManager.objects.filter(chat_id=self.thread_id).first()
+            if not chat_room:
+                # 없으면 생성
+                pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
+                chat_room = ChatManager.objects.create(
+                    user=user,
+                    pregnancy=pregnancy,
+                    is_active=True
+                )
+
+        # 대화 저장
+        conversation = LLMConversation.objects.create(
+            user=user,
+            chat_room=chat_room,
+            query=user_input,
+            response=assistant_output,
+            user_info=self.user_info,
+            source_documents=source_documents or [],
+            using_rag=using_rag
+        )
+        return conversation
 
 # 가드레일 정의
 @input_guardrail
@@ -387,6 +440,7 @@ class OpenAIAgentService:
     def get_query_classifier_agent(self) -> Agent:
         return Agent(
             name="query_classifier_agent",
+            model=self.model_name,
             instructions=query_classifier_instructions,
             output_type=QueryClassification
         )
@@ -395,7 +449,7 @@ class OpenAIAgentService:
     def get_data_verification_agent(self, context: PregnancyContext) -> Agent:
         return Agent(
             name="data_verification_agent",
-            model="gpt-4o",
+            model=self.model_name,
             instructions=create_agent_instructions(context, data_verification_agent_base_instructions),
             output_type=DataValidationResult
         )
@@ -413,7 +467,7 @@ class OpenAIAgentService:
     def get_medical_agent(self, context: PregnancyContext) -> Agent:
         return Agent(
             name="medical_agent",
-            model="gpt-4o",
+            model=self.model_name,
             instructions=create_agent_instructions(context, medical_agent_base_instructions),
             handoff_description="임신 주차별 의학 정보를 제공합니다.",
             input_guardrails=[check_appropriate_content],
@@ -431,7 +485,7 @@ class OpenAIAgentService:
     def get_policy_agent(self, context: PregnancyContext) -> Agent:
         return Agent(
             name="policy_agent",
-            model="gpt-4o",
+            model=self.model_name,
             instructions=create_agent_instructions(context, policy_agent_base_instructions),
             handoff_description="임신과 출산 관련 정부 지원 정책 정보와 연락처를 제공합니다.",
             tools=[WebSearchTool(user_location={"type": "approximate", "city": "South Korea"})],
@@ -475,7 +529,7 @@ class OpenAIAgentService:
     def get_emotional_support_agent(self, context: PregnancyContext) -> Agent:
         return Agent(
             name="emotional_support_agent",
-            model="gpt-4o",
+            model=self.model_name,
             instructions=create_agent_instructions(context, emotional_agent_base_instructions),
             handoff_description="임신 중 감정 변화와 심리적 건강을 검색을 통해 지원합니다. 혹은 대화중 나온 내용을 바탕으로 격한 감정을 변화가 감지된다면 사용자에게 조언을 제공합니다.",
             input_guardrails=[check_appropriate_content],
@@ -534,100 +588,177 @@ class OpenAIAgentService:
         Returns:
             생성된 응답 및 메타데이터
         """
-        # 컨텍스트 초기화
-        context = PregnancyContext(user_id=user_id, thread_id=thread_id)
+        import sys
+        import traceback
         
-        # 추가 정보 설정
-        if pregnancy_week:
-            context.update_pregnancy_week(pregnancy_week)
-        if baby_name:
-            context.add_user_info("baby_name", baby_name)
+        print(f"========== process_query 시작 (stream={stream}) ==========")
+        print(f"thread_id in asyncio: {id(asyncio.current_task())}")
         
-        # 훅 초기화
-        hooks = PregnancyAgentHooks()
-        
-        # 질문 분류
-        query_classifier = self.get_query_classifier_agent()
-        classification_result = await Runner.run(
-            query_classifier,
-            query_text,
-            hooks=hooks
-        )
-        
-        query_type = classification_result.final_output.category
-        needs_verification = classification_result.final_output.needs_verification
-        
-        # 메인 에이전트 생성
-        main_agent = self.get_main_agent(context)
-        
-        # 결과 변수
-        result_data = {
-            "response": "",
-            "query_type": query_type,
-            "needs_verification": needs_verification,
-            "metrics": {}
-        }
-        
-        # 에이전트 실행
-        if stream:
-            # 스트리밍 응답 (비동기)
-            result = Runner.run_streamed(
-                main_agent,
-                query_text,
-                context=context,
-                hooks=hooks
-            )
+        try:
+            # 컨텍스트 초기화
+            print(f"컨텍스트 초기화: user_id={user_id}, thread_id={thread_id}")
+            print(f"질문: {query_text}")
+            context = PregnancyContext(user_id=user_id, thread_id=thread_id)
             
-            # 스트리밍 이벤트 반환
-            return result
-        else:
-            # 일반 응답
-            result = await Runner.run(
-                main_agent,
-                query_text,
-                context=context,
-                hooks=hooks
-            )
+            if user_id:
+                print("사용자 데이터 로드 시작")
+                try:
+                    await context.load_user_data_async()
+                    print("사용자 데이터 로드 완료")
+                except Exception as e:
+                    print(f"사용자 데이터 로드 중 오류: {e}")
+                    print(traceback.format_exc())
             
-            # 응답 추출
-            response_text = result.final_output
+            # 추가 정보 설정
+            if pregnancy_week:
+                context.update_pregnancy_week(pregnancy_week)
+            if baby_name:
+                context.add_user_info("baby_name", baby_name)
             
-            # 검증이 필요한 경우
-            if needs_verification:
-                # 데이터 검증 에이전트 실행
-                verification_agent = self.get_data_verification_agent(context)
-                verification_result = await Runner.run(
-                    verification_agent,
-                    response_text,
+            # 훅 초기화
+            print("PregnancyAgentHooks 초기화")
+            hooks = PregnancyAgentHooks()
+            
+            # 질문 분류
+            print("질문 분류 시작")
+            query_classifier = self.get_query_classifier_agent()
+            print("질문 분류 에이전트 생성함")
+            # try:
+            #     classification_result = await Runner.run(
+            #         query_classifier,
+            #         query_text,
+            #         hooks=hooks
+            #     )
+            #     print(f"질문 분류 완료: {classification_result.final_output.category}")
+            # except Exception as e:
+            #     print(f"질문 분류 중 오류: {e}")
+            #     print(traceback.format_exc())
+            #     raise e
+
+            # query_type = classification_result.final_output.category
+            # needs_verification = classification_result.final_output.needs_verification
+
+            # 최대 3번 재시도
+            for attempt in range(3):
+                try:
+                    classification_result = await asyncio.wait_for(
+                        Runner.run(query_classifier, query_text, hooks=hooks),
+                        timeout=5.0
+                    )
+                    query_type = classification_result.final_output.category
+                    needs_verification = classification_result.final_output.needs_verification
+                    print(f"질문 쉽게 분류 완료: {query_type}, {needs_verification}")
+                    break  # 성공하면 루프 탈출
+
+                except (asyncio.TimeoutError, Exception) as e:
+                    print(f"질문 분류 시도 {attempt+1} 실패: {e}")
+                    if attempt == 2:  # 마지막 시도
+                        # 대체 처리 로직
+                        query_type = "general"
+                        needs_verification = False
+                        print(f"질문 겨우 분류 완료: {query_type}, {needs_verification}")
+        
+            
+            # 메인 에이전트 생성
+            print("메인 에이전트 생성")
+            main_agent = self.get_main_agent(context)
+            
+            # 결과 변수
+            result_data = {
+                "response": "",
+                "query_type": query_type,
+                "needs_verification": needs_verification,
+                "metrics": {}
+            }
+            
+            # 에이전트 실행
+            if stream:
+                # 스트리밍 응답 (비동기)
+                print("스트리밍 모드로 에이전트 실행")
+                try:
+                    print("Runner.run_streamed 호출 직전")
+                    result = Runner.run_streamed(
+                        main_agent,
+                        query_text,
+                        context=context,
+                        hooks=hooks
+                    )
+                    print(f"Runner.run_streamed 반환됨: {type(result)}")
+                    
+                    # stream_events 메소드 호출 테스트
+                    print("stream_events 메소드 테스트")
+                    try:
+                        # 실제로 호출하진 않고 존재 여부만 확인
+                        if hasattr(result, 'stream_events'):
+                            print(f"stream_events 메소드 존재")
+                            # print(f"stream_events 메소드 존재: {result.stream_events}")
+                        else:
+                            print("stream_events 메소드가 존재하지 않음!")
+                    except Exception as e:
+                        print(f"stream_events 메소드 테스트 중 오류: {e}")
+                    
+                    print("스트리밍 응답 객체 반환 준비")
+                    return result
+                except Exception as e:
+                    print(f"스트리밍 에이전트 실행 중 오류: {e}")
+                    print(traceback.format_exc())
+                    raise e
+            else:
+                # 일반 응답
+                print("일반 모드로 에이전트 실행")
+                result = await Runner.run(
+                    main_agent,
+                    query_text,
                     context=context,
                     hooks=hooks
                 )
                 
-                # 검증 결과 저장
-                validation_result = verification_result.final_output
-                context.add_verification_result(validation_result)
+                # 응답 추출
+                response_text = result.final_output
                 
-                # 검증 정보 추가
-                result_data["verification"] = {
-                    "is_accurate": validation_result.is_accurate,
-                    "confidence_score": validation_result.confidence_score,
-                    "reason": validation_result.reason,
-                    "corrected_information": validation_result.corrected_information
-                }
-            
-            # 응답 저장
-            result_data["response"] = response_text
-            result_data["metrics"] = hooks.get_metrics()
-            
-            # 대화 내역 저장
-            context.add_conversation(query_text, response_text)
-            
-            # DB에 대화 저장
-            conversation = context.save_to_db(query_text, response_text)
-            if conversation:
-                result_data["conversation_id"] = conversation.id
-            
-            return result_data
+                # 검증이 필요한 경우
+                if needs_verification:
+                    # 데이터 검증 에이전트 실행
+                    verification_agent = self.get_data_verification_agent(context)
+                    verification_result = await Runner.run(
+                        verification_agent,
+                        response_text,
+                        context=context,
+                        hooks=hooks
+                    )
+                    
+                    # 검증 결과 저장
+                    validation_result = verification_result.final_output
+                    context.add_verification_result(validation_result)
+                    
+                    # 검증 정보 추가
+                    result_data["verification"] = {
+                        "is_accurate": validation_result.is_accurate,
+                        "confidence_score": validation_result.confidence_score,
+                        "reason": validation_result.reason,
+                        "corrected_information": validation_result.corrected_information
+                    }
+                
+                # 응답 저장
+                result_data["response"] = response_text
+                result_data["metrics"] = hooks.get_metrics()
+                
+                # 대화 내역 저장
+                context.add_conversation(query_text, response_text)
+                
+                # DB에 대화 저장
+                conversation = await context.save_to_db_async(query_text, response_text)
+                if conversation:
+                    result_data["conversation_id"] = conversation.id
+
+                print("일반 응답 반환 준비")
+                return result_data
+        except Exception as e:
+            print(f"process_query 전역 예외: {e}")
+            print(traceback.format_exc())
+            raise e
+        finally:
+            print(f"========== process_query 종료 ==========")
 
 # 서비스 인스턴스 생성
 openai_agent_service = OpenAIAgentService() 

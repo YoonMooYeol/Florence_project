@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     #third party apps
+    'sorl.thumbnail',  # 썸네일 라이브러리
     'rest_framework_simplejwt', #JWT 인증
     "rest_framework", #DRF
     "rest_framework.authtoken", #Token 인증
@@ -390,4 +391,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# 정적 파일 저장 경로
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 

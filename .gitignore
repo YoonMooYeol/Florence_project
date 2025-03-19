@@ -144,6 +144,7 @@ env.bak/
 venv.bak/
 myenv
 wsl_venv/
+test_env/
 
 # Spyder project settings
 .spyderproject
@@ -195,3 +196,65 @@ celerybeat-schedule.db
 dump.rdb
 
 media/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media
+
+# 가상환경
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 환경변수 및 보안파일
+.env
+.env.local
+.env.production
+.env.*
+!.env.example
+
+# Elastic Beanstalk
+.elasticbeanstalk/*
+!.elasticbeanstalk/config.yml
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
+
+# Docker
+.dockerignore
+
+# 기타
+node_modules/
+.DS_Store

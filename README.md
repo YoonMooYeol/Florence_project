@@ -1,4 +1,83 @@
-# Florence 프로젝트
+# Florence Project
+
+## 프로젝트 개요
+Florence 프로젝트는 Django 기반의 웹 애플리케이션으로, 캘린더 관리, 회원 관리, LLM(Language Learning Model) 기능 등을 제공합니다.
+
+## 기술 스택
+- 웹 서버: Django + Gunicorn + Nginx
+- 비동기 작업: Celery + Celery Beat
+- 메시지 브로커: Redis
+- 데이터베이스: PostgreSQL
+- 배포: Docker, Docker Compose, AWS Elastic Beanstalk
+
+## 로컬 개발 환경 설정
+
+### 사전 요구사항
+- Docker 및 Docker Compose 설치
+- Python 3.8 이상 설치
+
+### 환경 변수 설정
+1. `.env.example` 파일을 `.env`로 복사
+2. `.env` 파일의 환경 변수 값을 적절히 수정
+
+### 로컬 실행 방법
+```bash
+# Docker Compose로 모든 서비스 실행
+docker-compose up -d
+
+# 로그 확인
+docker-compose logs -f
+```
+
+## AWS Elastic Beanstalk 배포 방법
+
+### 사전 요구사항
+- AWS CLI 설치
+- EB CLI 설치
+- AWS 계정 및 적절한 권한 설정
+
+### 배포 단계
+1. EB CLI 초기화
+```bash
+eb init
+```
+
+2. 환경 생성
+```bash
+eb create florence-env --single --instance-type t2.small
+```
+
+3. 배포
+```bash
+eb deploy
+```
+
+4. 환경 변수 설정
+```bash
+eb setenv SECRET_KEY=your-secret-key DB_NAME=florence_db DB_USER=florence_user DB_PASSWORD=your-password
+```
+
+## 유지보수
+
+### 데이터베이스 백업
+AWS RDS를 사용할 경우 자동 백업 설정을 권장합니다.
+
+### 로그 확인
+```bash
+eb logs
+```
+
+### 모니터링
+AWS CloudWatch를 통해 시스템 모니터링을 설정할 수 있습니다.
+
+## 문제 해결
+
+### 일반적인 문제
+1. 데이터베이스 연결 오류 - 보안 그룹 및 네트워크 설정 확인
+2. 정적 파일 접근 불가 - collectstatic 명령 실행 및 S3 버킷 권한 확인
+
+### 지원 및 문의
+문제가 발생할 경우 프로젝트 관리자에게 문의하세요.
 
 ## 목차
 - [프로젝트 소개](#프로젝트-소개)
