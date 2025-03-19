@@ -412,49 +412,165 @@ class BabyDiaryPhotoView(APIView):
     """
 
     parser_classes = [MultiPartParser, FormParser]
+    
     def post(self, request, diary_id):
-        diary = get_object_or_404(BabyDiary, diary_id=diary_id, user=request.user)
+        try:
+            diary = get_object_or_404(BabyDiary, diary_id=diary_id, user=request.user)
+            
+            # 로그 추가: 업로드 시작
+            print(f"BabyDiaryPhotoView.post: 사진 업로드 시작 - diary_id: {diary_id}")
+            
+            # request.FILES가 있는지 확인
+            if not request.FILES:
+                print("BabyDiaryPhotoView.post: Error - request.FILES가 비어있습니다.")
+                return Response({"error": "업로드된 파일이 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 여러 이미지를 처리
-        photo = request.FILES.getlist('image')  # 'image'는 Postman에서 form-data로 보낸 key 값
+            # 여러 이미지를 처리
+            photos = request.FILES.getlist('image')  # 'image'는 Postman에서 form-data로 보낸 key 값
+            
+            # 파일 목록 확인
+            if not photos:
+                print("BabyDiaryPhotoView.post: Error - 'image' 필드에 파일이 없습니다.")
+                return Response({"error": "'image' 필드에 파일이 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+                
+            print(f"BabyDiaryPhotoView.post: 업로드할 사진 개수: {len(photos)}")
+            
+            # 업로드 디렉토리가 있는지 확인하고 없으면 생성
+            from django.conf import settings
+            
+            upload_dir = os.path.join(settings.MEDIA_ROOT, 'baby_diary_photos', 
+                                    datetime.now().strftime('%Y/%m/%d'))
+            
+            if not os.path.exists(upload_dir):
+                os.makedirs(upload_dir, exist_ok=True)
+                print(f"BabyDiaryPhotoView.post: 업로드 디렉토리 생성: {upload_dir}")
 
-        # BabyDiaryPhoto 객체들을 하나씩 생성하여 저장
-        saved_photos = []
-        for photo in photo:
-            photo_instance = BabyDiaryPhoto.objects.create(
-                babydiary=diary,
-                image=photo
-            )
-            saved_photos.append(photo_instance)
+            # BabyDiaryPhoto 객체들을 하나씩 생성하여 저장
+            saved_photos = []
+            for i, photo in enumerate(photos):
+                try:
+                    print(f"BabyDiaryPhotoView.post: 사진 {i+1}/{len(photos)} 저장 시작 - 파일명: {photo.name}")
+                    
+                    photo_instance = BabyDiaryPhoto.objects.create(
+                        babydiary=diary,
+                        image=photo
+                    )
+                    saved_photos.append(photo_instance)
+                    print(f"BabyDiaryPhotoView.post: 사진 {i+1}/{len(photos)} 저장 성공 - photo_id: {photo_instance.photo_id}")
+                except Exception as photo_error:
+                    print(f"BabyDiaryPhotoView.post: 사진 {i+1}/{len(photos)} 저장 실패: {photo_error}")
+                    # 저장 도중 오류가 발생하면 다음 사진으로 넘어감
 
-        # 저장된 사진들을 직렬화하여 응답 반환
-        serializer = BabyDiaryPhotoSerializer(saved_photos, many=True)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+            # 저장된 사진이 없는 경우
+            if not saved_photos:
+                print("BabyDiaryPhotoView.post: Error - 모든 사진 저장에 실패했습니다.")
+                return Response({"error": "사진 저장에 실패했습니다."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # 저장된 사진들을 직렬화하여 응답 반환
+            serializer = BabyDiaryPhotoSerializer(saved_photos, many=True)
+            
+            # 응답 데이터에 썸네일 URL 추가
+            response_data = serializer.data
+            for i, photo_instance in enumerate(saved_photos):
+                try:
+                    response_data[i]['image_thumbnail'] = photo_instance.thumbnail_url
+                    print(f"BabyDiaryPhotoView.post: 사진 {i+1}/{len(saved_photos)} 썸네일 생성 성공")
+                except Exception as e:
+                    print(f"BabyDiaryPhotoView.post: 사진 {i+1}/{len(saved_photos)} 썸네일 URL 생성 중 오류 발생: {e}")
+                    response_data[i]['image_thumbnail'] = response_data[i]['image']
+            
+            print(f"BabyDiaryPhotoView.post: 사진 업로드 완료 - 저장된 사진 개수: {len(saved_photos)}")
+            return Response(response_data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            print(f"BabyDiaryPhotoView.post: 예상치 못한 오류 발생: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def get(self, request, diary_id):
         """
         태교일기 사진 조회
         """
-        diary_photos = BabyDiaryPhoto.objects.filter(babydiary__diary_id=diary_id, babydiary__user=request.user)
-        serializer = BabyDiaryPhotoSerializer(diary_photos, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
+        try:
+            diary_photos = BabyDiaryPhoto.objects.filter(babydiary__diary_id=diary_id, babydiary__user=request.user)
+            serializer = BabyDiaryPhotoSerializer(diary_photos, many=True)
+            
+            # 응답 데이터에 썸네일 URL 추가
+            response_data = serializer.data
+            for i, photo_instance in enumerate(diary_photos):
+                try:
+                    response_data[i]['image_thumbnail'] = photo_instance.thumbnail_url
+                except Exception as e:
+                    print(f"썸네일 URL 생성 중 오류 발생: {e}")
+                    response_data[i]['image_thumbnail'] = response_data[i]['image']
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def patch(self, request, diary_id, pk):
         """
         태교일기 사진 부분 수정 (이미지 수정 등)
         """
-        diary = get_object_or_404(BabyDiary, diary_id=diary_id, user=request.user)
-        photo = get_object_or_404(BabyDiaryPhoto, pk=pk, babydiary=diary)
+        try:
+            diary = get_object_or_404(BabyDiary, diary_id=diary_id, user=request.user)
+            photo = get_object_or_404(BabyDiaryPhoto, pk=pk, babydiary=diary)
 
-        serializer = BabyDiaryPhotoSerializer(photo, data=request.data, partial=True)
-        if serializer.is_valid():
-            if "image" in request.data:
-                # 기존 이미지 삭제 후 새 이미지 저장
-                photo.image.delete(save=False)
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            serializer = BabyDiaryPhotoSerializer(photo, data=request.data, partial=True)
+            if serializer.is_valid():
+                if "image" in request.data:
+                    try:
+                        # 기존 이미지 삭제 후 새 이미지 저장
+                        photo.image.delete(save=False)
+                    except Exception as e:
+                        print(f"기존 이미지 삭제 중 오류 발생: {e}")
+                        # 오류가 발생해도 계속 진행 (새 이미지는 저장)
+                photo_instance = serializer.save()
+                
+                # 응답에 썸네일 URL 추가
+                response_data = serializer.data
+                try:
+                    response_data['image_thumbnail'] = photo_instance.thumbnail_url
+                except Exception as e:
+                    print(f"썸네일 URL 생성 중 오류 발생: {e}")
+                    response_data['image_thumbnail'] = response_data['image']
+                
+                return Response(response_data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+    def put(self, request, diary_id, pk):
+        """
+        태교일기 사진 전체 수정 (이미지 교체)
+        """
+        try:
+            diary = get_object_or_404(BabyDiary, diary_id=diary_id, user=request.user)
+            photo = get_object_or_404(BabyDiaryPhoto, pk=pk, babydiary=diary)
+            
+            serializer = BabyDiaryPhotoSerializer(photo, data=request.data)
+            if serializer.is_valid():
+                if "image" in request.data:
+                    try:
+                        # 기존 이미지 삭제 후 새 이미지 저장
+                        photo.image.delete(save=False)
+                    except Exception as e:
+                        print(f"기존 이미지 삭제 중 오류 발생: {e}")
+                        # 오류가 발생해도 계속 진행 (새 이미지는 저장)
+                photo_instance = serializer.save()
+                
+                # 응답에 썸네일 URL 추가
+                response_data = serializer.data
+                try:
+                    response_data['image_thumbnail'] = photo_instance.thumbnail_url
+                except Exception as e:
+                    print(f"썸네일 URL 생성 중 오류 발생: {e}")
+                    response_data['image_thumbnail'] = response_data['image']
+                
+                return Response(response_data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def delete(self, request, diary_id, pk):
         """

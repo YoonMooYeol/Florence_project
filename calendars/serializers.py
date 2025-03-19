@@ -44,12 +44,23 @@ class DailyConversationSummaryCreateSerializer(serializers.ModelSerializer):
 
 
 class BabyDiaryPhotoSerializer(serializers.ModelSerializer):
-    diary_id = serializers.UUIDField(source="BabyDiary.diary_id", read_only=True)
-
+    diary_id = serializers.UUIDField(source="babydiary.diary_id", read_only=True)
+    image_thumbnail = serializers.SerializerMethodField()
+    
     class Meta:
         model = BabyDiaryPhoto
-        fields = ['photo_id', 'diary_id', 'image', 'created_at']
-        read_only_fields = ['photo_id', 'diary_id' ,'created_at']
+        fields = ['photo_id', 'diary_id', 'image', 'image_thumbnail', 'created_at']
+        read_only_fields = ['photo_id', 'diary_id', 'created_at']
+    
+    def get_image_thumbnail(self, obj):
+        # 모델에 정의된 thumbnail_url 속성 사용
+        if obj.image:
+            try:
+                return obj.thumbnail_url
+            except Exception as e:
+                # 오류 발생 시 원본 이미지 URL 반환
+                return obj.image.url
+        return None
 
 
 class BabyDiarySerializer(serializers.ModelSerializer):
@@ -57,7 +68,7 @@ class BabyDiarySerializer(serializers.ModelSerializer):
     class Meta:
         model = BabyDiary
         fields = '__all__'
-        read_only_fields = [ 'user', 'created_at', 'updated_at', 'photos']
+        read_only_fields = [ 'user', 'created_at', 'updated_at', 'photos', 'diary_date']
 
 class BabyDiaryCreateSerializer(serializers.ModelSerializer):
     class Meta:
