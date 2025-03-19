@@ -710,126 +710,6 @@ class OpenAIAgentQueryView(generics.GenericAPIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-# class OpenAIAgentStreamView(APIView):
-#     """
-#     OpenAI 에이전트 스트리밍 API
-    
-#     이 API는 스트리밍 방식으로 OpenAI 에이전트 응답을 제공합니다.
-#     SSE(Server-Sent Events) 방식으로 실시간 응답을 클라이언트에 전송합니다.
-#     """
-#     permission_classes = [AllowAny]
-    
-#     async def _process_query(self, query_data):
-#         """비동기로 에이전트 쿼리 처리"""
-#         return await openai_agent_service.process_query(
-#             query_text=query_data["query_text"],
-#             user_id=query_data["user_id"],
-#             thread_id=query_data.get("thread_id"),
-#             pregnancy_week=query_data.get("pregnancy_week"),
-#             baby_name=query_data.get("baby_name"),
-#             stream=True
-#         )
-    
-#     def _event_stream(self, request):
-#         """이벤트 스트림 생성기"""
-#         try:
-#             # 요청 데이터 추출
-#             query_text = request.data.get("query_text")
-#             user_id = request.data.get("user_id")
-#             thread_id = request.data.get("thread_id")
-#             pregnancy_week = request.data.get("pregnancy_week")
-#             baby_name = request.data.get("baby_name")
-            
-#             if not query_text or not user_id:
-#                 yield f"data: {json.dumps({'error': 'query_text와 user_id는 필수입니다.'})}\n\n"
-#                 return
-            
-#             # 쿼리 데이터 구성
-#             query_data = {
-#                 "query_text": query_text,
-#                 "user_id": user_id,
-#                 "thread_id": thread_id,
-#                 "pregnancy_week": pregnancy_week,
-#                 "baby_name": baby_name
-#             }
-            
-#             # 스트리밍 초기 응답
-#             yield f"data: {json.dumps({'status': 'start'})}\n\n"
-            
-#             # 누적 응답 저장
-#             accumulated_response = ""
-            
-#             # 비동기 이벤트 루프 생성
-#             loop = asyncio.new_event_loop()
-#             asyncio.set_event_loop(loop)
-            
-#             # 에이전트 실행
-#             stream_result = loop.run_until_complete(self._process_query(query_data))
-            
-#             # 응답 스트리밍
-#             async def process_stream():
-#                 nonlocal accumulated_response
-                
-#                 async for event in stream_result.stream_events():
-#                     # 텍스트 이벤트 처리
-#                     if event.type == "raw_response_event":
-#                         if hasattr(event.data, 'delta') and event.data.delta:
-#                             accumulated_response += event.data.delta
-#                             yield f"data: {json.dumps({'delta': event.data.delta, 'complete': False})}\n\n"
-                    
-#                     # 도구 사용 이벤트 처리
-#                     elif event.type == "tool_start":
-#                         yield f"data: {json.dumps({'tool': event.data.name, 'status': 'start'})}\n\n"
-                    
-#                     elif event.type == "tool_end":
-#                         yield f"data: {json.dumps({'tool': event.data.name, 'status': 'end'})}\n\n"
-                    
-#                     # 핸드오프 이벤트 처리
-#                     elif event.type == "handoff":
-#                         yield f"data: {json.dumps({'handoff': True, 'from': event.data.from_agent, 'to': event.data.to_agent})}\n\n"
-            
-#                 # 대화 저장
-#                 context = PregnancyContext(user_id=user_id, thread_id=thread_id)
-#                 conversation = context.save_to_db(query_text, accumulated_response)
-                
-#                 # 완료 이벤트
-#                 complete_data = {
-#                     'response': accumulated_response, 
-#                     'complete': True
-#                 }
-#                 if conversation:
-#                     complete_data['conversation_id'] = conversation.id
-                
-#                 yield f"data: {json.dumps(complete_data)}\n\n"
-            
-#             # 스트림 처리 실행
-#             for chunk in loop.run_until_complete(process_stream()):
-#                 yield chunk
-                
-#             # 루프 종료
-#             loop.close()
-            
-#         except Exception as e:
-#             logger.error(f"스트리밍 처리 중 오류: {str(e)}")
-#             yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        
-#         finally:
-#             # 종료 이벤트
-#             yield f"data: {json.dumps({'status': 'done'})}\n\n"
-    
-#     def post(self, request):
-#         """스트리밍 응답 생성"""
-#         # SSE 응답 반환
-#         response = StreamingHttpResponse(
-#             self._event_stream(request),
-#             content_type='text/event-stream'
-#         )
-#         response['X-Accel-Buffering'] = 'no'
-#         response['Cache-Control'] = 'no-cache'
-#         return response
-
-
-
 def sync_generator_from_async(loop, aiter):
     """
     async generator -> sync generator 로 변환하는 브릿지 함수.
@@ -845,101 +725,106 @@ def sync_generator_from_async(loop, aiter):
 
 class OpenAIAgentStreamView(APIView):
     """
-    Django <4.2 환경에서, SSE를 동기 뷰 + StreamingHttpResponse 로 구현한 예시.
+    ThreadPoolExecutor를 사용하여 비동기-동기 컨텍스트 전환 문제를 해결한 SSE 스트리밍 뷰
     """
 
     permission_classes = [AllowAny]
 
-    async def _process_query_async(self, query_data):
-        """
-        실제 비동기 에이전트 호출 (async)
-        """
-        # openai_agent_service.process_query(...) 가 async generator를 담은 객체를 반환한다고 가정
-        return await openai_agent_service.process_query(
-            query_text=query_data["query_text"],
-            user_id=query_data["user_id"],
-            thread_id=query_data.get("thread_id"),
-            pregnancy_week=query_data.get("pregnancy_week"),
-            baby_name=query_data.get("baby_name"),
-            stream=True
-        )
-
     def _event_stream(self, request):
-        """
-        SSE를 전송하는 (동기) generator
-        """
-        try:
-            query_text = request.data.get("query_text")
-            user_id = request.data.get("user_id")
-            thread_id = request.data.get("thread_id")
-            pregnancy_week = request.data.get("pregnancy_week")
-            baby_name = request.data.get("baby_name")
-
-            if not query_text or not user_id:
-                yield f"data: {json.dumps({'error': 'query_text와 user_id는 필수입니다.'})}\n\n"
-                return
-
-            # 글로벌 루프
-            loop = get_agent_loop() 
-
-            # 비동기 함수 실행 -> async generator 객체(stream_result)
-            stream_result = loop.run_until_complete(
-                self._process_query_async({
-                    "query_text": query_text,
-                    "user_id": user_id,
-                    "thread_id": thread_id,
-                    "pregnancy_week": pregnancy_week,
-                    "baby_name": baby_name
-                })
-            )
-
-            # SSE 시작
-            yield "data: {\"status\":\"start\"}\n\n"
-
-            accumulated_response = ""
-
-            # async generator -> sync generator 변환
-            def async_stream_events():
-                return stream_result.stream_events()  # async generator 반환
-
-            # 이 함수를 통해 한 이벤트씩 꺼내며 SSE 전송
-            for event in sync_generator_from_async(loop, async_stream_events()):
-                # event 처리
-                if event.type == "raw_response_event":
-                    if hasattr(event.data, 'delta') and event.data.delta:
-                        # print(event.data.delta)
-                        accumulated_response += event.data.delta
-                        payload = {"delta": event.data.delta, "complete": False}
-                        yield f"data: {json.dumps(payload)}\n\n"
-
-                elif event.type == "tool_start":
-                    yield f"data: {json.dumps({'tool': event.data.name, 'status': 'start'})}\n\n"
-
-                elif event.type == "tool_end":
-                    yield f"data: {json.dumps({'tool': event.data.name, 'status': 'end'})}\n\n"
-
-                elif event.type == "handoff":
-                    yield f"data: {json.dumps({'handoff': True, 'from': event.data.from_agent, 'to': event.data.to_agent})}\n\n"
-
-            # 대화 저장
-            context = PregnancyContext(user_id=user_id, thread_id=thread_id)
-            conversation = context.save_to_db(query_text, accumulated_response)
-
-            # 완료
-            complete_data = {
-                "response": accumulated_response,
-                "complete": True
-            }
-            if conversation:
-                complete_data["conversation_id"] = conversation.id
-
-            yield f"data: {json.dumps(complete_data)}\n\n"
-        except Exception as e:
-            logger.error(f"스트리밍 처리 중 오류: {str(e)}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        finally:
-            # 'done' 이벤트
-            yield "data: {\"status\":\"done\"}\n\n"
+        """실시간 스트리밍 SSE 이벤트"""
+        import json
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        
+        # 파라미터 추출
+        query_text = request.data.get("query_text")
+        user_id = request.data.get("user_id")
+        
+        if not query_text or not user_id:
+            yield f"data: {json.dumps({'error': 'query_text와 user_id는 필수입니다.'})}\n\n"
+            return
+        
+        # 시작 메시지
+        yield f"data: {json.dumps({'status': 'start'})}\n\n"
+        
+        # ThreadPoolExecutor를 사용한 병렬 처리
+        executor = ThreadPoolExecutor(max_workers=1)
+        loop = asyncio.new_event_loop()
+        
+        # 스레드간 데이터 큐
+        from queue import Queue
+        chunk_queue = Queue()
+        stop_event = threading.Event()
+        
+        def worker():
+            """별도 스레드에서 비동기 처리 실행"""
+            asyncio.set_event_loop(loop)
+            
+            async def stream_processor():
+                try:
+                    # 에이전트 스트림 설정
+                    stream_result = await openai_agent_service.process_query(
+                        query_text=query_text,
+                        user_id=user_id,
+                        thread_id=request.data.get("thread_id"),
+                        pregnancy_week=request.data.get("pregnancy_week"),
+                        baby_name=request.data.get("baby_name"),
+                        stream=True
+                    )
+                    
+                    # 실시간으로 큐에 추가
+                    accumulated_response = ""
+                    
+                    async for event in stream_result.stream_events():
+                        if event.type == "raw_response_event" and hasattr(event.data, 'delta'):
+                            accumulated_response += event.data.delta
+                            chunk_queue.put({"delta": event.data.delta, "complete": False})
+                        elif event.type == "tool_start":
+                            chunk_queue.put({"tool": event.data.name, "status": "start"})
+                        elif event.type == "tool_end":
+                            chunk_queue.put({"tool": event.data.name, "status": "end"})
+                        elif event.type == "handoff":
+                            chunk_queue.put({
+                                "handoff": True, 
+                                "from": event.data.from_agent, 
+                                "to": event.data.to_agent
+                            })
+                    
+                    # 대화 저장
+                    context = PregnancyContext(user_id=user_id, thread_id=request.data.get("thread_id"))
+                    await context.save_to_db_async(query_text, accumulated_response)
+                    
+                    # 완료 메시지
+                    chunk_queue.put({
+                        "response": accumulated_response,
+                        "complete": True
+                    })
+                    chunk_queue.put({"status": "done"})
+                except Exception as e:
+                    chunk_queue.put({"error": str(e)})
+                    chunk_queue.put({"status": "done"})
+                finally:
+                    stop_event.set()  # 작업 완료 신호
+            
+            # 비동기 처리 실행
+            loop.run_until_complete(stream_processor())
+        
+        # 스레드 시작
+        import threading
+        thread = threading.Thread(target=worker)
+        thread.daemon = True
+        thread.start()
+        
+        # 메인 스레드에서 큐 소비 및 실시간 전송
+        while not (stop_event.is_set() and chunk_queue.empty()):
+            try:
+                chunk = chunk_queue.get(timeout=0.1)
+                yield f"data: {json.dumps(chunk)}\n\n"
+                chunk_queue.task_done()
+            except Exception:
+                # 큐가 비었지만 작업이 아직 진행 중인 경우 대기
+                pass
 
     def post(self, request):
         """
