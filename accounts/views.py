@@ -918,22 +918,34 @@ class FollowUnfollowView(GenericAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = FollowUserSerializer
 
-    def get_following_user(self, user_id=None):
-        """ user_id를 이용하여 사용자 객체를 가져옴 """
+    def get_following_user(self, user_id=None, email=None):
+        """ user_id 또는 email을 이용하여 사용자 객체를 가져옴 """
         if user_id:
             try:
                 return User.objects.get(user_id=user_id)
+            except User.DoesNotExist:
+                return None
+        elif email:
+            try:
+                return User.objects.get(email=email)
             except User.DoesNotExist:
                 return None
         return None
 
     def post(self, request, *args, **kwargs):
         """ 팔로우 기능 """
-        user_id = request.data.get('user_id')
-        if not user_id:
-            return Response({"error": "팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+        # URL에서 email 파라미터 가져오기
+        email = kwargs.get('email')
+        
+        # email이 없으면 request.data에서 user_id 사용
+        if email:
+            following_user = self.get_following_user(email=email)
+        else:
+            user_id = request.data.get('user_id')
+            if not user_id:
+                return Response({"error": "팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            following_user = self.get_following_user(user_id=user_id)
             
-        following_user = self.get_following_user(user_id)
         follower = request.user
 
         if not following_user:
@@ -951,11 +963,18 @@ class FollowUnfollowView(GenericAPIView):
 
     def delete(self, request, *args, **kwargs):
         """ 언팔로우 기능 """
-        user_id = request.data.get('user_id')
-        if not user_id:
-            return Response({"error": "언팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+        # URL에서 email 파라미터 가져오기
+        email = kwargs.get('email')
+        
+        # email이 없으면 request.data에서 user_id 사용
+        if email:
+            following_user = self.get_following_user(email=email)
+        else:
+            user_id = request.data.get('user_id')
+            if not user_id:
+                return Response({"error": "언팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            following_user = self.get_following_user(user_id=user_id)
             
-        following_user = self.get_following_user(user_id)
         follower = request.user
 
         if not following_user:
@@ -971,10 +990,10 @@ class FollowUnfollowView(GenericAPIView):
             return Response({"error": "팔로우 관계가 존재하지 않습니다."}, status=status.HTTP_404_NOT_FOUND)
 
 
-
 class FollowListView(ListAPIView):
     serializer_class = FollowUserSerializer
     permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post']  # GET과 POST 메소드 모두 허용
 
     def get_queryset(self):
         return Follow.objects.filter(follower=self.request.user)
@@ -982,10 +1001,19 @@ class FollowListView(ListAPIView):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         return context
+        
+    def get(self, request, *args, **kwargs):
+        # ListAPIView의 기본 get 메소드 호출
+        return self.list(request, *args, **kwargs)
+        
+    def post(self, request, *args, **kwargs):
+        # POST 요청도 동일하게 처리 (GET과 동일하게 목록 반환)
+        return self.list(request, *args, **kwargs)
 
 class FollowersListView(ListAPIView):
     serializer_class = FollowUserSerializer
     permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post']  # GET과 POST 메소드 모두 허용
 
     def get_queryset(self):
         return Follow.objects.filter(following=self.request.user)
@@ -993,6 +1021,14 @@ class FollowersListView(ListAPIView):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         return context
+        
+    def get(self, request, *args, **kwargs):
+        # ListAPIView의 기본 get 메소드 호출
+        return self.list(request, *args, **kwargs)
+        
+    def post(self, request, *args, **kwargs):
+        # POST 요청도 동일하게 처리 (GET과 동일하게 목록 반환)
+        return self.list(request, *args, **kwargs)
 
 
 class RetrieveUserByEmailView(GenericAPIView):
