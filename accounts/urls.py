@@ -45,8 +45,9 @@ urlpatterns = [
     path('check_register/', RegisterCheckView.as_view(), name='check-register'),
 
     path("follow/<str:email>/", FollowUnfollowView.as_view(), name="follow-toggle"),
-    path('follow/following/', FollowListView.as_view(), name='following-list'),
-    path('follow/followers/', FollowersListView.as_view(), name='followers-list'),
+    path("follow/", FollowUnfollowView.as_view(), name="follow-toggle-id"),  # 추가: user_id로 팔로우/언팔로우 하기 위한 URL
+    path('follow-list/following/', FollowListView.as_view(), name='following-list'),
+    path('follow-list/followers/', FollowersListView.as_view(), name='followers-list'),
 
     path('search/', RetrieveUserByEmailView.as_view(), name='search'),  # 이메일로 사용자 검색
 
