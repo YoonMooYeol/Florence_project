@@ -335,13 +335,18 @@ class BabyDiaryViewSet(viewsets.ModelViewSet):
         pregnancy = get_object_or_404(Pregnancy, pregnancy_id=pregnancy_id, user=user)
 
         diary_date = serializer.validated_data['diary_date']
+        content = serializer.validated_data.get('content', '')
 
         # 같은 diary_date가 존재하면 업데이트, 없으면 생성
         baby_diary, created = BabyDiary.objects.update_or_create(
             user=user,
             diary_date=diary_date,  # 중복 체크할 필드
-            defaults={**serializer.validated_data, 'pregnancy': pregnancy}
+            defaults={'content': content, 'pregnancy': pregnancy}
         )
+
+        # diary_id를 serializer에 설정하여 응답에 포함되도록 함
+        if hasattr(serializer, 'instance'):
+            serializer.instance = baby_diary
 
         return baby_diary
 

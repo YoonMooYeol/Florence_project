@@ -57,15 +57,13 @@ class BabyDiarySerializer(serializers.ModelSerializer):
     class Meta:
         model = BabyDiary
         fields = '__all__'
-        read_only_fields = ['diary_id', 'user', 'created_at', 'updated_at', 'photos']
+        read_only_fields = [ 'user', 'created_at', 'updated_at', 'photos']
 
 class BabyDiaryCreateSerializer(serializers.ModelSerializer):
-    pregnancy_id = serializers.UUIDField()
-
     class Meta:
         model = BabyDiary
-        fields = ['diary_date','diary_id','pregnancy_id']
-        read_only_fields = ['diary_id', 'user', 'created_at', 'updated_at']
+        fields = ['diary_date', 'diary_id']
+        read_only_fields = ['diary_id']
         
     def create(self, validated_data):
         return BabyDiary.objects.create(**validated_data)
