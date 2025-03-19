@@ -1,0 +1,37 @@
+{
+    "AWSEBDockerrunVersion": 2,
+    "containerDefinitions": [
+        {
+            "name": "web",
+            "image": "yoonmooyeol/florence:latest",
+            "essential": true,
+            "memory": 512,
+            "portMappings": [
+                {
+                    "hostPort": 8000,
+                    "containerPort": 8000
+                }
+            ]
+        },
+        {
+            "name": "celery",
+            "image": "yoonmooyeol/florence:latest",
+            "essential": false,
+            "memory": 256,
+            "command": [
+                "celery",
+                "-A",
+                "config",
+                "worker",
+                "-l",
+                "info"
+            ]
+        },
+        {
+            "name": "redis",
+            "image": "redis:latest",
+            "essential": false,
+            "memory": 128
+        }
+    ]
+}

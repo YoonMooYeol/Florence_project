@@ -1,0 +1,42 @@
+services:
+  web:
+    build: .
+    container_name: florence_backend
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - db
+    environment:
+      - DEBUG=1
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/florence_db
+    volumes:
+      - .:/app
+
+  celery:
+    build: .
+    container_name: florence_celery
+    command: celery -A config worker -l info
+    depends_on:
+      - redis
+      - db
+    environment:
+      - DEBUG=1
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/florence_db
+    volumes:
+      - .:/app
+
+  redis:
+    image: redis:latest
+    container_name: florence_redis
+
+  db:
+    image: postgres:15
+    container_name: florence_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: florence_db
+    ports:
+      - "5432:5432"
