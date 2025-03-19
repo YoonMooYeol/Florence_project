@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     #third party apps
+    'sorl.thumbnail',  # 썸네일 라이브러리
     'rest_framework_simplejwt', #JWT 인증
     "rest_framework", #DRF
     "rest_framework.authtoken", #Token 인증
