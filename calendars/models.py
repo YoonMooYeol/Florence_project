@@ -1,6 +1,17 @@
 from django.db import models
 import uuid
 from accounts.models import User, Pregnancy
+from sorl.thumbnail import get_thumbnail
+import os
+
+
+
+class MyImage(models.Model):
+    image = models.ImageField(upload_to='images/')
+
+    @property
+    def thumbnail_url(self):
+        return get_thumbnail(self.image, '200x200', crop='center', quality=90).url
 
 class Event(models.Model):
     """일정 모델"""
@@ -121,6 +132,40 @@ class BabyDiaryPhoto(models.Model):
 
     image = models.ImageField(upload_to='baby_diary_photos/%Y/%m/%d/', verbose_name='사진')
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    @property
+    def thumbnail_url(self):
+        """썸네일 URL을 반환합니다."""
+        try:
+            if not self.image:
+                return None
+                
+            # 이미지 파일이 실제로 존재하는지 확인
+            if not os.path.exists(self.image.path):
+                print(f"이미지 파일이 존재하지 않음: {self.image.path}")
+                return self.image.url if self.image else None
+                
+            # PIL로 이미지 열기 시도
+            try:
+                from PIL import Image
+                Image.open(self.image.path).verify()  # 이미지가 유효한지 확인
+            except Exception as img_verify_error:
+                print(f"이미지 파일이 손상되었거나 유효하지 않음: {img_verify_error}")
+                return self.image.url if self.image else None
+                
+            # sorl.thumbnail 사용하여 썸네일 생성
+            return get_thumbnail(self.image, '200x200', crop='center', quality=90).url
+        except ImportError:
+            print("sorl.thumbnail이 설치되지 않았습니다.")
+            return self.image.url if self.image else None
+        except Exception as e:
+            # 썸네일 생성 실패 시 로깅하고 원본 이미지 URL 반환
+            print(f"썸네일 생성 오류: {e}")
+            try:
+                return self.image.url if self.image else None
+            except Exception as img_error:
+                print(f"원본 이미지 URL 생성 오류: {img_error}")
+                return None
 
     class Meta:
         verbose_name = '태교일기 사진'
