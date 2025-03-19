@@ -140,31 +140,33 @@ class BabyDiaryPhoto(models.Model):
             if not self.image:
                 return None
                 
-            # 이미지 파일이 실제로 존재하는지 확인
-            if not os.path.exists(self.image.path):
-                print(f"이미지 파일이 존재하지 않음: {self.image.path}")
-                return self.image.url if self.image else None
+            # 이미지 경로가 있는지 확인
+            if not self.image.url:
+                print(f"이미지 URL이 존재하지 않음")
+                return None
                 
-            # PIL로 이미지 열기 시도
+            # 서버에 파일이 있는지 확인
             try:
-                from PIL import Image
-                Image.open(self.image.path).verify()  # 이미지가 유효한지 확인
-            except Exception as img_verify_error:
-                print(f"이미지 파일이 손상되었거나 유효하지 않음: {img_verify_error}")
-                return self.image.url if self.image else None
+                if not os.path.exists(self.image.path):
+                    print(f"이미지 파일이 존재하지 않음: {self.image.path}")
+                    return self.image.url
+            except Exception as e:
+                print(f"이미지 경로 확인 오류: {e}")
+                return self.image.url
                 
             # sorl.thumbnail 사용하여 썸네일 생성
-            return get_thumbnail(self.image, '200x200', crop='center', quality=90).url
-        except ImportError:
-            print("sorl.thumbnail이 설치되지 않았습니다.")
-            return self.image.url if self.image else None
+            try:
+                return get_thumbnail(self.image, '200x200', crop='center', quality=90).url
+            except Exception as thumb_error:
+                print(f"썸네일 생성 실패: {thumb_error}")
+                return self.image.url
+                
         except Exception as e:
-            # 썸네일 생성 실패 시 로깅하고 원본 이미지 URL 반환
-            print(f"썸네일 생성 오류: {e}")
+            # 모든 예외 케이스에서 원본 이미지 URL 반환
+            print(f"thumbnail_url 속성 오류: {e}")
             try:
                 return self.image.url if self.image else None
-            except Exception as img_error:
-                print(f"원본 이미지 URL 생성 오류: {img_error}")
+            except:
                 return None
 
     class Meta:

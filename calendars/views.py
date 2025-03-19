@@ -415,6 +415,30 @@ class BabyDiaryPhotoView(APIView):
     
     def post(self, request, diary_id):
         try:
+            # 디버깅 로그 추가
+            print(f"\n\n===== BabyDiaryPhotoView.post 시작: diary_id={diary_id} =====")
+            print(f"Request method: {request.method}")
+            print(f"Request user: {request.user}")
+            print(f"Request FILES keys: {list(request.FILES.keys())}")
+            print(f"Request FILES keys (all): {request.FILES.keys()}")
+            print(f"Request POST keys: {list(request.POST.keys())}")
+            
+            # 'image' 필드 존재 여부 및 값 확인
+            has_image_field = 'image' in request.FILES
+            image_files_count = len(request.FILES.getlist('image')) if has_image_field else 0
+            print(f"'image' 필드 존재 여부: {has_image_field}")
+            print(f"'image' 필드 파일 개수: {image_files_count}")
+            
+            if has_image_field:
+                for i, file in enumerate(request.FILES.getlist('image')):
+                    print(f"파일 {i+1} 정보: 이름={file.name}, 크기={file.size}, 타입={file.content_type}")
+            
+            # 필수 헤더 확인
+            auth_header = request.headers.get('Authorization', None)
+            content_type = request.headers.get('Content-Type', None)
+            print(f"Authorization 헤더: {auth_header[:20]}... (일부만 표시)" if auth_header else "Authorization 헤더 없음")
+            print(f"Content-Type 헤더: {content_type}")
+            
             diary = get_object_or_404(BabyDiary, diary_id=diary_id, user=request.user)
             
             # 로그 추가: 업로드 시작
@@ -431,7 +455,16 @@ class BabyDiaryPhotoView(APIView):
             # 파일 목록 확인
             if not photos:
                 print("BabyDiaryPhotoView.post: Error - 'image' 필드에 파일이 없습니다.")
-                return Response({"error": "'image' 필드에 파일이 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
+                # 다른 가능한 필드 이름 체크
+                all_file_fields = list(request.FILES.keys())
+                if all_file_fields:
+                    print(f"사용 가능한 파일 필드: {all_file_fields}")
+                    # 첫 번째 필드 사용 시도
+                    alt_field = all_file_fields[0]
+                    photos = request.FILES.getlist(alt_field)
+                    print(f"대체 필드 '{alt_field}'에서 {len(photos)}개 파일 찾음")
+                else:
+                    return Response({"error": "'image' 필드에 파일이 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
                 
             print(f"BabyDiaryPhotoView.post: 업로드할 사진 개수: {len(photos)}")
             
@@ -473,8 +506,13 @@ class BabyDiaryPhotoView(APIView):
             response_data = serializer.data
             for i, photo_instance in enumerate(saved_photos):
                 try:
-                    response_data[i]['image_thumbnail'] = photo_instance.thumbnail_url
-                    print(f"BabyDiaryPhotoView.post: 사진 {i+1}/{len(saved_photos)} 썸네일 생성 성공")
+                    thumbnail_url = photo_instance.thumbnail_url
+                    if thumbnail_url:
+                        response_data[i]['image_thumbnail'] = thumbnail_url
+                        print(f"BabyDiaryPhotoView.post: 사진 {i+1}/{len(saved_photos)} 썸네일 생성 성공")
+                    else:
+                        print(f"BabyDiaryPhotoView.post: 사진 {i+1}/{len(saved_photos)} 썸네일 생성 실패 - 썸네일 URL이 None임")
+                        response_data[i]['image_thumbnail'] = response_data[i]['image']
                 except Exception as e:
                     print(f"BabyDiaryPhotoView.post: 사진 {i+1}/{len(saved_photos)} 썸네일 URL 생성 중 오류 발생: {e}")
                     response_data[i]['image_thumbnail'] = response_data[i]['image']
