@@ -296,6 +296,11 @@ class BabyDiaryViewSet(viewsets.ModelViewSet):
     create: 아기 일기 생성 (하루에 하나씩만 생성 가능)
     update: 아기 일기 수정
     destroy: 아기 일기 삭제
+    
+    retrieve_by_id: diary_id로 아기 일기 상세 조회
+    update_by_id: diary_id로 아기 일기 수정
+    partial_update_by_id: diary_id로 아기 일기 부분 수정
+    destroy_by_id: diary_id로 아기 일기 삭제
     """
     permission_classes = [IsAuthenticated]  # 로그인한 사용자만 접근
     lookup_field = 'pregnancy_id'  # pregnancy_id로 조회
@@ -303,6 +308,14 @@ class BabyDiaryViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         return BabyDiary.objects.filter(user=user)
+        
+    def get_baby_diary_by_id(self, diary_id):
+        """
+        diary_id로 아기 일기를 조회합니다.
+        """
+        obj = get_object_or_404(BabyDiary, diary_id=diary_id, user=self.request.user)
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def get_object(self):
         pregnancy_id = self.kwargs['pregnancy_id']
@@ -324,6 +337,48 @@ class BabyDiaryViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return BabyDiaryCreateSerializer
         return BabyDiarySerializer
+        
+    # diary_id로 아기 일기 조회
+    def retrieve_by_id(self, request, diary_id=None):
+        """
+        diary_id로 아기 일기를 조회합니다.
+        """
+        diary = self.get_baby_diary_by_id(diary_id)
+        serializer = BabyDiarySerializer(diary)
+        return Response(serializer.data)
+        
+    # diary_id로 아기 일기 수정
+    def update_by_id(self, request, diary_id=None):
+        """
+        diary_id로 아기 일기를 수정합니다.
+        """
+        diary = self.get_baby_diary_by_id(diary_id)
+        serializer = BabyDiarySerializer(diary, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+    # diary_id로 아기 일기 부분 수정
+    def partial_update_by_id(self, request, diary_id=None):
+        """
+        diary_id로 아기 일기를 부분 수정합니다.
+        """
+        diary = self.get_baby_diary_by_id(diary_id)
+        serializer = BabyDiarySerializer(diary, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+    # diary_id로 아기 일기 삭제
+    def destroy_by_id(self, request, diary_id=None):
+        """
+        diary_id로 아기 일기를 삭제합니다.
+        """
+        diary = self.get_baby_diary_by_id(diary_id)
+        diary.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def perform_create(self, serializer):
         """
@@ -349,24 +404,6 @@ class BabyDiaryViewSet(viewsets.ModelViewSet):
             serializer.instance = baby_diary
 
         return baby_diary
-
-    def perform_update(self, serializer):
-        """
-        아기 일기 수정 시 해당 일기를 수정합니다.
-        """
-        user = self.request.user
-        pregnancy_id = self.kwargs['pregnancy_id']
-        pregnancy = get_object_or_404(Pregnancy, pregnancy_id=pregnancy_id, user=user)
-
-        baby_diary = self.get_object()
-        baby_diary.pregnancy = pregnancy  # pregnancy 업데이트
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        """
-        아기 일기 삭제 시 해당 일기를 삭제합니다.
-        """
-        instance.delete()
 
 
 class BabyDiaryPhotoView(APIView):
