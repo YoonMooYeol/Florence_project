@@ -1,6 +1,17 @@
 from django.db import models
 import uuid
 from accounts.models import User, Pregnancy
+from sorl.thumbnail import get_thumbnail
+import os
+
+
+
+class MyImage(models.Model):
+    image = models.ImageField(upload_to='images/')
+
+    @property
+    def thumbnail_url(self):
+        return get_thumbnail(self.image, '200x200', crop='center', quality=90).url
 
 class Event(models.Model):
     """일정 모델"""
@@ -105,3 +116,62 @@ class BabyDiary(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.diary_date} 아기 일기"
+
+
+class BabyDiaryPhoto(models.Model):
+    """태교일기 사진 모델"""
+    photo_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # BabyDiary와 1:N 관계 설정
+    babydiary = models.ForeignKey(
+        'BabyDiary',
+        related_name='photos',
+        on_delete=models.CASCADE,
+        verbose_name='태교일기'
+    )
+
+    image = models.ImageField(upload_to='baby_diary_photos/%Y/%m/%d/', verbose_name='사진')
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    @property
+    def thumbnail_url(self):
+        """썸네일 URL을 반환합니다."""
+        try:
+            if not self.image:
+                return None
+                
+            # 이미지 경로가 있는지 확인
+            if not self.image.url:
+                print(f"이미지 URL이 존재하지 않음")
+                return None
+                
+            # 서버에 파일이 있는지 확인
+            try:
+                if not os.path.exists(self.image.path):
+                    print(f"이미지 파일이 존재하지 않음: {self.image.path}")
+                    return self.image.url
+            except Exception as e:
+                print(f"이미지 경로 확인 오류: {e}")
+                return self.image.url
+                
+            # sorl.thumbnail 사용하여 썸네일 생성
+            try:
+                return get_thumbnail(self.image, '200x200', crop='center', quality=90).url
+            except Exception as thumb_error:
+                print(f"썸네일 생성 실패: {thumb_error}")
+                return self.image.url
+                
+        except Exception as e:
+            # 모든 예외 케이스에서 원본 이미지 URL 반환
+            print(f"thumbnail_url 속성 오류: {e}")
+            try:
+                return self.image.url if self.image else None
+            except:
+                return None
+
+    class Meta:
+        verbose_name = '태교일기 사진'
+        verbose_name_plural = '태교일기 사진 목록'
+
+    def __str__(self):
+        return f"{self.babydiary.diary_date} 태교일기 사진"

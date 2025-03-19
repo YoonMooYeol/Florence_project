@@ -5,6 +5,7 @@ import random
 import re
 from datetime import datetime
 
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, viewsets, permissions
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -14,12 +15,13 @@ from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 from rest_framework.generics import GenericAPIView, ListAPIView
+from rest_framework.parsers import MultiPartParser, FormParser
 
 from django.contrib.auth.hashers import get_random_string
 from django.http import HttpResponseRedirect
 from django.contrib.auth import authenticate
 from django.conf import settings
-from django.core.mail import get_connection, EmailMessage
+from django.core.mail import get_connection, EmailMultiAlternatives
 
 from .serializers import (
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
@@ -207,7 +209,7 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
             return Response({"success": False, "message": f"이메일 전송 중 오류가 발생했습니다: {str(e)}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def send_mail(self, recipient_email, code):
+    def send_mail(self, recipient_email, code, html_content=None):
         """ 이메일 전송 """
         # 이메일 주소 형식 확인
         if not re.match(r"[^@]+@[^@]+\.[^@]+", recipient_email):
@@ -227,14 +229,37 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
                 password=config['HOST_PASSWORD'],
 
             )
-            email = EmailMessage(
+            # EmailMessage 대신 EmailMultiAlternatives 사용
+            email = EmailMultiAlternatives(
                 subject="[누리달] 💡비밀번호 재설정 인증 코드 안내 💡",
                 body=f"안녕하세요\n비밀번호 재설정 인증코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
                 from_email=config['HOST_USER'],
                 to=[recipient_email],
                 connection=connection,
             )
-            email.attach_alternative(html_content, "text/html")  # HTML로 변환
+            
+            # html_content가 제공된 경우에만 HTML 콘텐츠 추가
+            if html_content:
+                email.attach_alternative(html_content, "text/html")  # HTML로 변환
+            else:
+                # 기본 HTML 콘텐츠 생성
+                default_html = f"""
+                <html>
+                <body>
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                        <h2 style="color: #333;">누리달 비밀번호 재설정</h2>
+                        <p>안녕하세요,</p>
+                        <p>비밀번호 재설정 인증코드는 다음과 같습니다:</p>
+                        <div style="background-color: #f7f7f7; padding: 15px; font-size: 24px; font-weight: bold; text-align: center; margin: 20px 0; border-radius: 5px;">
+                            {code}
+                        </div>
+                        <p>이 코드는 10분 후에 만료됩니다.</p>
+                        <p>감사합니다,<br>누리달 팀</p>
+                    </div>
+                </body>
+                </html>
+                """
+                email.attach_alternative(default_html, "text/html")
 
             # 이메일 전송
             email.send(fail_silently=False)
@@ -916,22 +941,34 @@ class FollowUnfollowView(GenericAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = FollowUserSerializer
 
-    def get_following_user(self, user_id=None):
-        """ user_id를 이용하여 사용자 객체를 가져옴 """
+    def get_following_user(self, user_id=None, email=None):
+        """ user_id 또는 email을 이용하여 사용자 객체를 가져옴 """
         if user_id:
             try:
                 return User.objects.get(user_id=user_id)
+            except User.DoesNotExist:
+                return None
+        elif email:
+            try:
+                return User.objects.get(email=email)
             except User.DoesNotExist:
                 return None
         return None
 
     def post(self, request, *args, **kwargs):
         """ 팔로우 기능 """
-        user_id = request.data.get('user_id')
-        if not user_id:
-            return Response({"error": "팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+        # URL에서 email 파라미터 가져오기
+        email = kwargs.get('email')
+        
+        # email이 없으면 request.data에서 user_id 사용
+        if email:
+            following_user = self.get_following_user(email=email)
+        else:
+            user_id = request.data.get('user_id')
+            if not user_id:
+                return Response({"error": "팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            following_user = self.get_following_user(user_id=user_id)
             
-        following_user = self.get_following_user(user_id)
         follower = request.user
 
         if not following_user:
@@ -941,18 +978,26 @@ class FollowUnfollowView(GenericAPIView):
             return Response({"error": "자기 자신을 팔로우할 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         follow, created = Follow.objects.get_or_create(follower=follower, following=following_user)
+
         if created:
-            return Response({"message": f"{following_user.name} 님을 팔로우했습니다."},
+            return Response({"message": f"{following_user.name} 님을 팔로우했습니다.", "status": 1},
                             status=status.HTTP_201_CREATED)
         return Response({"message": "이미 팔로우 중입니다."}, status=status.HTTP_200_OK)
 
     def delete(self, request, *args, **kwargs):
         """ 언팔로우 기능 """
-        user_id = request.data.get('user_id')
-        if not user_id:
-            return Response({"error": "언팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+        # URL에서 email 파라미터 가져오기
+        email = kwargs.get('email')
+        
+        # email이 없으면 request.data에서 user_id 사용
+        if email:
+            following_user = self.get_following_user(email=email)
+        else:
+            user_id = request.data.get('user_id')
+            if not user_id:
+                return Response({"error": "언팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            following_user = self.get_following_user(user_id=user_id)
             
-        following_user = self.get_following_user(user_id)
         follower = request.user
 
         if not following_user:
@@ -962,15 +1007,16 @@ class FollowUnfollowView(GenericAPIView):
         try:
             follow = Follow.objects.get(follower=follower, following=following_user)
             follow.delete()
-            return Response({"message": f"{following_user.name} 님을 언팔로우했습니다."}, status=status.HTTP_200_OK)
+            return Response({"message": f"{following_user.name} 님을 언팔로우했습니다.", "status": 0},
+                            status=status.HTTP_200_OK)
         except Follow.DoesNotExist:
-            return Response({"error": f"{following_user.name} 님을 팔로우하지 않았습니다."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "팔로우 관계가 존재하지 않습니다."}, status=status.HTTP_404_NOT_FOUND)
 
 
 class FollowListView(ListAPIView):
     serializer_class = FollowUserSerializer
     permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post']  # GET과 POST 메소드 모두 허용
 
     def get_queryset(self):
         return Follow.objects.filter(follower=self.request.user)
@@ -978,10 +1024,19 @@ class FollowListView(ListAPIView):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         return context
+        
+    def get(self, request, *args, **kwargs):
+        # ListAPIView의 기본 get 메소드 호출
+        return self.list(request, *args, **kwargs)
+        
+    def post(self, request, *args, **kwargs):
+        # POST 요청도 동일하게 처리 (GET과 동일하게 목록 반환)
+        return self.list(request, *args, **kwargs)
 
 class FollowersListView(ListAPIView):
     serializer_class = FollowUserSerializer
     permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post']  # GET과 POST 메소드 모두 허용
 
     def get_queryset(self):
         return Follow.objects.filter(following=self.request.user)
@@ -989,6 +1044,14 @@ class FollowersListView(ListAPIView):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         return context
+        
+    def get(self, request, *args, **kwargs):
+        # ListAPIView의 기본 get 메소드 호출
+        return self.list(request, *args, **kwargs)
+        
+    def post(self, request, *args, **kwargs):
+        # POST 요청도 동일하게 처리 (GET과 동일하게 목록 반환)
+        return self.list(request, *args, **kwargs)
 
 
 class RetrieveUserByEmailView(GenericAPIView):
@@ -1022,31 +1085,46 @@ class RetrieveUserByEmailView(GenericAPIView):
             return Response({"detail": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
 
 
-class PhotoViewSet(ModelViewSet):
-    """ 프로필 사진 등록/조회/수정/삭제 """
-    permission_classes = [IsAuthenticated]
-    serializer_class = PhotoSerializer
+class ProfilePhotoView(APIView):
+    def get(self, request, user_id=None):
+        """
+        특정 사용자의 프로필 사진을 조회할 수 있도록 수정.
+        user_id가 제공되지 않으면 현재 사용자의 프로필 사진을 반환.
+        """
+        if user_id:
+            user = get_object_or_404(User, id=user_id)
+            photo = get_object_or_404(Photo, user=user)
+        else:
+            photo = get_object_or_404(Photo, user=request.user)
 
-    def get_queryset(self):
-        """ 현재 로그인한 사용자의 사진만 필터링 """
-        return Photo.objects.filter(user=self.request.user, category="profile")
+        serializer = PhotoSerializer(photo)
+        return Response(serializer.data)
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+    def post(self, request):
+        """ 현재 사용자에게 프로필 사진이 없을 경우에만 등록 가능 """
+        if Photo.objects.filter(user=request.user).exists():
+            return Response({"detail": "이미 등록된 사진이 있습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
+        serializer = PhotoSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class DiaryPhotoViewSet(ModelViewSet):
-    """ 일기 사진 등록/조회/수정/삭제 """
-    permission_classes = [IsAuthenticated]
-    serializer_class = PhotoSerializer
+    def put(self, request):
+        """ 현재 사용자의 프로필 사진을 수정 """
+        photo = get_object_or_404(Photo, user=request.user)
+        serializer = PhotoSerializer(photo, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def get_queryset(self):
-        """ 현재 로그인한 사용자의 태교일기 사진만 필터링 """
-        return Photo.objects.filter(user=self.request.user, category="diary")
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
+    def delete(self, request):
+        """ 현재 사용자의 프로필 사진을 삭제 """
+        photo = get_object_or_404(Photo, user=request.user)
+        photo.delete()
+        return Response({"detail": "프로필 사진이 삭제되었습니다."}, status=status.HTTP_204_NO_CONTENT)
 
 
 
