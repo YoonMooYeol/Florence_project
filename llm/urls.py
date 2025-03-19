@@ -1,5 +1,6 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from django.urls import path
+# , include
+# from rest_framework.routers import DefaultRouter
 from . import views
 
 """
@@ -27,18 +28,15 @@ URL 패턴:
 app_name = 'llm'
 
 # 라우터 설정
-router = DefaultRouter()
-router.register(r'conversations', views.LLMConversationViewSet, basename='conversation')
+# router = DefaultRouter()
+# router.register(r'conversations', views.LLMConversationViewSet, basename='conversation')
 
 urlpatterns = [
-    # LLM 질문 API
-    path('', views.LLMQueryView.as_view(), name='llm_query'),
+    # # LLM 질문 API
+    # path('', views.LLMQueryView.as_view(), name='llm_query'),
     
-    # 임신 주차 검색 API
-    path('pregnancy-search/', views.pregnancy_search, name='pregnancy_search'),
-    
-    # OpenAI 에이전트 API
-    path('agent/', views.OpenAIAgentQueryView.as_view(), name='openai_agent_query'),
+    # # OpenAI 에이전트 API
+    # path('agent/', views.OpenAIAgentQueryView.as_view(), name='openai_agent_query'),
     
     # OpenAI 에이전트 스트리밍 API
     path('agent/stream/', views.OpenAIAgentStreamView.as_view(), name='openai_agent_stream'),
@@ -46,9 +44,8 @@ urlpatterns = [
     # 채팅방 관련 API
     path('chat/rooms/', views.ChatRoomListCreateView.as_view(), name='chat_rooms'),
     path('chat/rooms/<uuid:chat_id>/', views.ChatRoomDetailView.as_view(), name='chat_room_detail'),
-    path('chat/rooms/<uuid:chat_id>/messages/', views.ChatMessageCreateView.as_view(), name='chat_message_create'),
     path('chat/rooms/<uuid:chat_id>/summarize/', views.ChatRoomSummarizeView.as_view(), name='chat_room_summarize'),
     
     # 뷰셋 라우터 포함
-    path('', include(router.urls)),
+    # path('', include(router.urls)),
 ] 

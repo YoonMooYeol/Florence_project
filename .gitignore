@@ -144,6 +144,7 @@ env.bak/
 venv.bak/
 myenv
 wsl_venv/
+test_env/
 
 # Spyder project settings
 .spyderproject
