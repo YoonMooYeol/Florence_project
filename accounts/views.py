@@ -429,7 +429,7 @@ class KakaoLoginCallbackView(APIView):
         data = {
             'grant_type': 'authorization_code',
             'client_id': os.getenv('REST_KAKAO_API'),  # 카카오 developers에서 발급한 REST API 키
-            'redirect_uri': os.getenv('API_URL') + "/v1/accounts/kakao/callback",  # 디벨로퍼스에 등록된 Redirect URI와 동일
+            'redirect_uri': "https://nooridal.com/v1/accounts/kakao/callback",  # 디벨로퍼스에 등록된 Redirect URI와 동일
             'code': code
         }
         token_response = requests.post(token_api_url, data=data)
@@ -736,7 +736,7 @@ class GoogleLoginCallbackView(APIView):
         if not code:
             print("❌ 오류: 구글 인증 code가 없습니다.")
             # 프론트엔드로 에러 리다이렉션
-            frontend_redirect_uri = "http://localhost:5173/google/callback"
+            frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
             redirect_url = f"{frontend_redirect_uri}?error=인증_코드_없음"
             return HttpResponseRedirect(redirect_url)
 
@@ -753,7 +753,7 @@ class GoogleLoginCallbackView(APIView):
         if not google_client_id or not google_client_secret:
             print("❌ 오류: 구글 API 키가 설정되지 않았습니다.")
             # 프론트엔드로 에러 리다이렉션
-            frontend_redirect_uri = "http://localhost:5173/google/callback"
+            frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
             redirect_url = f"{frontend_redirect_uri}?error=API_키_설정_없음"
             return HttpResponseRedirect(redirect_url)
 
@@ -780,14 +780,14 @@ class GoogleLoginCallbackView(APIView):
             except Exception as json_error:
                 print(f"❌ JSON 파싱 오류: {str(json_error)}, 응답 내용: {token_response.text}")
                 # 프론트엔드로 에러 리다이렉션
-                frontend_redirect_uri = "http://localhost:5173/google/callback"
+                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
                 redirect_url = f"{frontend_redirect_uri}?error=JSON_파싱_오류"
                 return HttpResponseRedirect(redirect_url)
 
             if 'access_token' not in token_json:
                 print(f"❌ 오류: 구글 액세스 토큰을 받지 못했습니다. 응답: {token_json}")
                 # 프론트엔드로 에러 리다이렉션
-                frontend_redirect_uri = "http://localhost:5173/google/callback"
+                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
                 redirect_url = f"{frontend_redirect_uri}?error=액세스_토큰_없음"
                 return HttpResponseRedirect(redirect_url)
 
@@ -809,7 +809,7 @@ class GoogleLoginCallbackView(APIView):
             if profile_response.status_code != 200:
                 print("❌ 오류: 구글 사용자 정보를 가져오지 못했습니다.")
                 # 프론트엔드로 에러 리다이렉션
-                frontend_redirect_uri = "http://localhost:5173/google/callback"
+                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
                 redirect_url = f"{frontend_redirect_uri}?error=사용자_정보_가져오기_실패"
                 return HttpResponseRedirect(redirect_url)
 
@@ -818,7 +818,7 @@ class GoogleLoginCallbackView(APIView):
             except Exception as json_error:
                 print(f"❌ 프로필 JSON 파싱 오류: {str(json_error)}, 응답 내용: {profile_response.text}")
                 # 프론트엔드로 에러 리다이렉션
-                frontend_redirect_uri = "http://localhost:5173/google/callback"
+                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
                 redirect_url = f"{frontend_redirect_uri}?error=프로필_JSON_파싱_오류"
                 return HttpResponseRedirect(redirect_url)
 
@@ -830,7 +830,7 @@ class GoogleLoginCallbackView(APIView):
             if not email:
                 print("❌ 오류: 구글 이메일 정보가 없습니다.")
                 # 프론트엔드로 에러 리다이렉션
-                frontend_redirect_uri = "http://localhost:5173/google/callback"
+                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
                 redirect_url = f"{frontend_redirect_uri}?error=이메일_정보_없음"
                 return HttpResponseRedirect(redirect_url)
 
@@ -888,7 +888,7 @@ class GoogleLoginCallbackView(APIView):
             if is_production:
                 frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
             else:
-                frontend_redirect_uri = "http://localhost:5173/google/callback"
+                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
 
             print(f"리디렉션 URL: {frontend_redirect_uri}")
 
@@ -918,7 +918,7 @@ class GoogleLoginCallbackView(APIView):
             print(traceback.format_exc())
 
             # 프론트엔드로 에러 리다이렉션
-            frontend_redirect_uri = "http://localhost:5173/google/callback"
+            frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
             redirect_url = f"{frontend_redirect_uri}?error=처리_중_오류_발생"
             return HttpResponseRedirect(redirect_url)
 
