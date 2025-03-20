@@ -1,10 +1,13 @@
 branch-defaults:
+  develop_6:
+    environment: null
+  develop_9:
+    environment: Nooridal-env-2
   main:
-    environment: florence-env
+    environment: null
     group_suffix: null
-
 global:
-  application_name: florence
+  application_name: nooridal
   branch: null
   default_ec2_keyname: aws-eb
   default_platform: Docker
@@ -13,7 +16,7 @@ global:
   instance_profile: null
   platform_name: null
   platform_version: null
-  profile: eb-cli
+  profile: null
   repository: null
   sc: git
-  workspace_type: Application 
+  workspace_type: Application
