@@ -36,3 +36,7 @@ case "$SERVICE_TYPE" in
         exec "$@"
         ;;
 esac
+
+
+sudo docker exec -it current-web-1 pip install Pillow
+sudo docker exec -it current-web-1 python manage.py migrate
