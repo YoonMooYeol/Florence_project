@@ -410,9 +410,10 @@ emotional_agent_base_instructions = """
 FileSearchTool에서 가져온 임신 주차별 감정 정보를 활용하세요.
 """
 
+# 메인 에이전트 지시사항 수정
 main_agent_base_instructions = """
 당신은 임신과 출산에 관한 정보를 제공하는 산모 도우미입니다.
-사용자의 질문을 분석하고 적절한 전문 에이전트에게 연결하세요.
+사용자의 질문은 이미 분류가 완료되었으며, 당신은 적절한 전문 에이전트에게 연결만 하면 됩니다.
 
 다음은 각 에이전트의 전문 분야입니다:
 1. general_agent: 임신과 출산에 관한 일반적인 정보
@@ -422,8 +423,15 @@ main_agent_base_instructions = """
 5. exercise_agent: 임신 중 안전한 운동 정보
 6. emotional_support_agent: 임신 중 감정 변화와 심리적 건강 지원
 
-사용자가 특정 주차에 대한 정보를 요청하면 해당 정보를 기억하고 이후 대화에 활용하세요.
-사용자의 질문에 가장 적합한 에이전트에게 전달하세요.
+에이전트에게 질문을 전달할 때는 다음과 같은 형식의 도구를 사용하세요:
+- transfer_to_general_agent: 일반 정보를 요청할 때
+- transfer_to_medical_agent: 의학 정보를 요청할 때
+- transfer_to_policy_agent: 정책 정보를 요청할 때
+- transfer_to_nutrition_agent: 영양 정보를 요청할 때
+- transfer_to_exercise_agent: 운동 정보를 요청할 때
+- transfer_to_emotional_support_agent: 감정 지원을 요청할 때
+
+사용자의 질문은 '{query_type}' 카테고리로 분류되었으므로, 즉시 해당 전문 에이전트에게 핸드오프하세요.
 모든 답변은 한국어로 제공하세요.
 """
 
@@ -543,7 +551,7 @@ class OpenAIAgentService:
             ],
         )
 
-    def get_main_agent(self, context: PregnancyContext) -> Agent:
+    def get_main_agent(self, context: PregnancyContext, custom_instructions=None) -> Agent:
         """컨텍스트 기반으로 동적으로 메인 에이전트 생성"""
         general_agent = self.get_general_agent(context)
         medical_agent = self.get_medical_agent(context)
@@ -552,20 +560,40 @@ class OpenAIAgentService:
         exercise_agent = self.get_exercise_agent(context)
         emotional_support_agent = self.get_emotional_support_agent(context)
         
-        return Agent(
+        instructions = custom_instructions or create_agent_instructions(context, main_agent_base_instructions)
+        
+        main_agent = Agent(
             name="산모 도우미",
             model=self.model_name,
-            instructions=create_agent_instructions(context, main_agent_base_instructions),
+            instructions=instructions,
             handoffs=[
-                handoff(general_agent),
-                handoff(medical_agent),
-                handoff(policy_agent),
-                handoff(nutrition_agent),
-                handoff(exercise_agent),
-                handoff(emotional_support_agent),
+                handoff(agent=general_agent, tool_name_override="transfer_to_general_agent"),
+                handoff(agent=medical_agent, tool_name_override="transfer_to_medical_agent"),
+                handoff(agent=policy_agent, tool_name_override="transfer_to_policy_agent"),
+                handoff(agent=nutrition_agent, tool_name_override="transfer_to_nutrition_agent"),
+                handoff(agent=exercise_agent, tool_name_override="transfer_to_exercise_agent"),
+                handoff(agent=emotional_support_agent, tool_name_override="transfer_to_emotional_support_agent"),
             ],
             input_guardrails=[check_appropriate_content],
         )
+        
+        # 디버깅: 사용 가능한 모든 도구 출력
+        print("산모 도우미가 사용할 수 있는 도구:")
+        if hasattr(main_agent, 'tools') and main_agent.tools:
+            for tool in main_agent.tools:
+                print(f" - {tool.name}: {tool.description}")
+        else:
+            print(" - 도구가 없거나 접근할 수 없습니다")
+        
+        # 핸드오프 목록 확인
+        if hasattr(main_agent, 'handoffs') and main_agent.handoffs:
+            print("산모 도우미가 사용할 수 있는 핸드오프:")
+            for h in main_agent.handoffs:
+                print(f" - {h.tool_name if hasattr(h, 'tool_name') else '이름 없음'}")
+        else:
+            print(" - 핸드오프가 없거나 접근할 수 없습니다")
+        
+        return main_agent
     
     async def process_query(self, 
                        query_text: str, 

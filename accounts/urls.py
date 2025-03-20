@@ -51,7 +51,7 @@ urlpatterns = [
 
     path('search/', RetrieveUserByEmailView.as_view(), name='search'),  # 이메일로 사용자 검색
 
-    path('profile/photo/', ProfilePhotoView.as_view(), name='profile_photo'),
+    path('users/me/profile-image/', ProfilePhotoView.as_view(), name='profile_photo'),
 
 
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

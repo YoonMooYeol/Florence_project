@@ -39,6 +39,7 @@ load_dotenv()
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
+API_URL = os.getenv('PRODUCTION')
 
 class RegisterView(generics.CreateAPIView):
     """회원가입 API"""
@@ -428,7 +429,7 @@ class KakaoLoginCallbackView(APIView):
         data = {
             'grant_type': 'authorization_code',
             'client_id': os.getenv('REST_KAKAO_API'),  # 카카오 developers에서 발급한 REST API 키
-            'redirect_uri': "http://127.0.0.1:8000/v1/accounts/kakao/callback",  # 디벨로퍼스에 등록된 Redirect URI와 동일
+            'redirect_uri': os.getenv('API_URL') + "/v1/accounts/kakao/callback",  # 디벨로퍼스에 등록된 Redirect URI와 동일
             'code': code
         }
         token_response = requests.post(token_api_url, data=data)
@@ -757,7 +758,7 @@ class GoogleLoginCallbackView(APIView):
             return HttpResponseRedirect(redirect_url)
 
         # 리디렉션 URI 설정 - 백엔드 콜백 URL
-        redirect_uri = f"http://127.0.0.1:8000/v1/accounts/google/callback"
+        redirect_uri = f"https://nooridal.com/v1/accounts/google/callback"
 
         data = {
             'grant_type': 'authorization_code',
