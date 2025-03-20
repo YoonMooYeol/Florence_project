@@ -1,12 +1,11 @@
 branch-defaults:
-  feature1_9:
-    environment: florence-env
-    group_suffix: null
+  develop_6:
+    environment: null
   main:
-    environment: florence-env
+    environment: null
     group_suffix: null
 global:
-  application_name: florence
+  application_name: nooridal
   branch: null
   default_ec2_keyname: aws-eb
   default_platform: Docker
@@ -15,7 +14,7 @@ global:
   instance_profile: null
   platform_name: null
   platform_version: null
-  profile: eb-cli
+  profile: null
   repository: null
   sc: git
   workspace_type: Application
