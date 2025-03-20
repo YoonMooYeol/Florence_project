@@ -1,8 +1,10 @@
 branch-defaults:
+  feature1_9:
+    environment: florence-env
+    group_suffix: null
   main:
     environment: florence-env
     group_suffix: null
-
 global:
   application_name: florence
   branch: null
@@ -16,4 +18,4 @@ global:
   profile: eb-cli
   repository: null
   sc: git
-  workspace_type: Application 
+  workspace_type: Application
