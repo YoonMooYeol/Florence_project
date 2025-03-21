@@ -1087,46 +1087,61 @@ class RetrieveUserByEmailView(GenericAPIView):
 
 
 class ProfilePhotoView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, user_id=None):
         """
-        특정 사용자의 프로필 사진을 조회할 수 있도록 수정.
-        user_id가 제공되지 않으면 현재 사용자의 프로필 사진을 반환.
+        특정 사용자의 프로필 사진을 조회. user_id가 없으면 현재 사용자 기준.
         """
         if user_id:
             user = get_object_or_404(User, id=user_id)
-            photo = get_object_or_404(Photo, user=user)
         else:
-            photo = get_object_or_404(Photo, user=request.user)
+            user = request.user
 
-        serializer = PhotoSerializer(photo)
+        photo = Photo.objects.filter(user=user).first()
+        if not photo:
+            return Response({"detail": "등록된 프로필 사진이 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PhotoSerializer(photo, context={'request': request})
         return Response(serializer.data)
 
     def post(self, request):
-        """ 현재 사용자에게 프로필 사진이 없을 경우에만 등록 가능 """
+        """
+        현재 사용자에게 프로필 사진 등록. 기존 사진 있으면 오류 반환.
+        """
         if Photo.objects.filter(user=request.user).exists():
             return Response({"detail": "이미 등록된 사진이 있습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = PhotoSerializer(data=request.data)
+        serializer = PhotoSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             serializer.save(user=request.user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def put(self, request):
-        """ 현재 사용자의 프로필 사진을 수정 """
-        photo = get_object_or_404(Photo, user=request.user)
-        serializer = PhotoSerializer(photo, data=request.data, partial=True)
+        """
+        현재 사용자의 프로필 사진 수정
+        """
+        photo = Photo.objects.filter(user=request.user).first()
+        if not photo:
+            return Response({"detail": "수정할 프로필 사진이 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PhotoSerializer(photo, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request):
-        """ 현재 사용자의 프로필 사진을 삭제 """
-        photo = get_object_or_404(Photo, user=request.user)
+        """
+        현재 사용자의 프로필 사진 삭제
+        """
+        photo = Photo.objects.filter(user=request.user).first()
+        if not photo:
+            return Response({"detail": "삭제할 프로필 사진이 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+
         photo.delete()
         return Response({"detail": "프로필 사진이 삭제되었습니다."}, status=status.HTTP_204_NO_CONTENT)
-
 
 
 
