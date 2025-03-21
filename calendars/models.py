@@ -23,6 +23,13 @@ class Event(models.Model):
         ('other', '기타'),
     ]
 
+    RECURRENCE_PATTERNS = [
+        ('daily', '매일'),
+        ('weekly', '매주'),
+        ('monthly', '매월'),
+        ('yearly', '매년'),
+    ]
+
     event_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     pregnancy = models.ForeignKey(Pregnancy, on_delete=models.CASCADE, related_name='events', verbose_name='임신 정보')
     title = models.CharField(
@@ -38,9 +45,23 @@ class Event(models.Model):
     event_time = models.TimeField(blank=True, null=True, verbose_name='일정 시간')
     event_type = models.CharField(max_length=20, choices=EVENT_TYPES, default='other', verbose_name='일정 유형')
     is_recurring = models.BooleanField(default=False, verbose_name='반복 여부')
-    recurrence_pattern = models.CharField(max_length=50, blank=True, null=True, verbose_name='반복 패턴')
+    recurrence_pattern = models.CharField(
+        max_length=50,
+        choices=RECURRENCE_PATTERNS,
+        blank=True,
+        null=True,
+        verbose_name='반복 패턴'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    parent_event = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='recurring_events',
+        verbose_name='원본 일정'
+    )
 
     class Meta:
         ordering = ['event_day', 'event_time']

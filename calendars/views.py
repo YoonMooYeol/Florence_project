@@ -28,6 +28,7 @@ from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from .models import BabyDiary, BabyDiaryPhoto
 from .serializers import BabyDiaryPhotoSerializer
+from django.db.models import Q
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
@@ -89,8 +90,285 @@ class EventViewSet(viewsets.ModelViewSet):
         return EventSerializer
 
     def perform_create(self, serializer):
-        serializer.save()
+        event = serializer.save()
+        
+        # 반복 일정인 경우 추가 일정 생성
+        if event.is_recurring and event.recurrence_pattern:
+            self.create_recurring_events(event)
+    
+    def create_recurring_events(self, event):
+        """반복 패턴에 따라 추가 일정을 생성합니다."""
+        # 반복 생성할 기간 (예: 1년)
+        end_date = event.event_day + timedelta(days=365)
+        
+        # 기본 일정 정보 (원본 복사용)
+        base_data = {
+            'pregnancy': event.pregnancy,
+            'title': event.title,
+            'description': event.description,
+            'event_time': event.event_time,
+            'event_type': event.event_type,
+            'is_recurring': False,  # 복제된 일정은 반복 설정 안함
+            'recurrence_pattern': None,
+            'parent_event': event  # 원본 일정 참조
+        }
+        
+        next_date = event.event_day
+        
+        if event.recurrence_pattern == 'daily':
+            # 매일 반복
+            while next_date <= end_date:
+                next_date += timedelta(days=1)
+                if next_date != event.event_day:  # 원본 제외
+                    Event.objects.create(
+                        **base_data,
+                        event_day=next_date
+                    )
+        
+        elif event.recurrence_pattern == 'weekly':
+            # 매주 반복 (같은 요일)
+            while next_date <= end_date:
+                next_date += timedelta(days=7)
+                if next_date != event.event_day:  # 원본 제외
+                    Event.objects.create(
+                        **base_data,
+                        event_day=next_date
+                    )
+        
+        elif event.recurrence_pattern == 'monthly':
+            # 매월 반복 (같은 날짜)
+            current_date = event.event_day
+            day_of_month = current_date.day
+            
+            while current_date <= end_date:
+                # 다음 달 계산
+                if current_date.month == 12:
+                    next_month = 1
+                    next_year = current_date.year + 1
+                else:
+                    next_month = current_date.month + 1
+                    next_year = current_date.year
+                
+                # 다음 달의 마지막 날 확인
+                import calendar
+                last_day = calendar.monthrange(next_year, next_month)[1]
+                actual_day = min(day_of_month, last_day)
+                
+                try:
+                    next_date = datetime(next_year, next_month, actual_day).date()
+                    if next_date != event.event_day:  # 원본 제외
+                        Event.objects.create(
+                            **base_data,
+                            event_day=next_date
+                        )
+                    current_date = next_date
+                except ValueError:
+                    # 유효하지 않은 날짜인 경우 (예: 2월 30일)
+                    current_date = datetime(next_year, next_month, 1).date()
+        
+        elif event.recurrence_pattern == 'yearly':
+            # 매년 반복 (같은 월, 같은 날)
+            current_date = event.event_day
+            
+            for year in range(current_date.year + 1, current_date.year + 10):  # 10년간
+                try:
+                    next_date = datetime(
+                        year,
+                        current_date.month,
+                        current_date.day
+                    ).date()
+                    
+                    if next_date <= end_date:
+                        Event.objects.create(
+                            **base_data,
+                            event_day=next_date
+                        )
+                except ValueError:
+                    # 윤년 관련 문제 처리 (2월 29일 등)
+                    continue
 
+    def destroy(self, request, *args, **kwargs):
+        """
+        일정 삭제 메서드 (단일 일정 삭제)
+        """
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    @action(detail=True, methods=['delete'])
+    def delete_recurring(self, request, pk=None):
+        """
+        반복 일정 삭제를 위한 추가 API 엔드포인트
+        
+        query parameters:
+        - delete_type: 삭제 유형 (this_only, this_and_future, all)
+        """
+        event = self.get_object()
+        delete_type = request.query_params.get('delete_type', 'this_only')
+        
+        # 1. 이 일정만 삭제
+        if delete_type == 'this_only':
+            self.perform_destroy(event)
+        
+        # 2. 이 일정과 이후의 모든 반복 일정 삭제
+        elif delete_type == 'this_and_future':
+            # 원본 일정에 연결된 경우
+            if event.parent_event:
+                # 해당 일정의 날짜 이후의 모든 반복 일정 삭제
+                Event.objects.filter(
+                    parent_event=event.parent_event,
+                    event_day__gte=event.event_day
+                ).delete()
+                # 이 일정도 삭제
+                self.perform_destroy(event)
+            # 자신이 원본 일정인 경우
+            else:
+                # 원본 일정 이후의 모든 반복 일정 삭제
+                Event.objects.filter(
+                    parent_event=event,
+                    event_day__gte=event.event_day
+                ).delete()
+                # 원본 일정도 삭제
+                self.perform_destroy(event)
+        
+        # 3. 모든 반복 일정 삭제 (원본 포함)
+        elif delete_type == 'all':
+            # 원본 일정에 연결된 경우
+            if event.parent_event:
+                # 원본 일정 찾기
+                parent = event.parent_event
+                # 모든 반복 일정 삭제
+                Event.objects.filter(parent_event=parent).delete()
+                # 원본 일정 삭제
+                parent.delete()
+            # 자신이 원본 일정인 경우
+            else:
+                # 모든 연결된 반복 일정 삭제
+                Event.objects.filter(parent_event=event).delete()
+                # 원본 일정 삭제
+                self.perform_destroy(event)
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['put', 'patch'])
+    def update_recurring(self, request, pk=None):
+        """
+        반복 일정 수정을 위한 추가 API 엔드포인트
+        
+        query parameters:
+        - update_type: 수정 유형 (this_only, this_and_future, all)
+        """
+        event = self.get_object()
+        update_type = request.query_params.get('update_type', 'this_only')
+        
+        # 1. 이 일정만 수정
+        if update_type == 'this_only':
+            # 현재 일정만 업데이트
+            serializer = self.get_serializer(event, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            
+            # 반복 일정의 경우, 원본 연결 제거 (독립된 일정으로 변경)
+            if event.parent_event and 'parent_event' not in request.data:
+                serializer.validated_data['parent_event'] = None
+                serializer.validated_data['is_recurring'] = False
+                serializer.validated_data['recurrence_pattern'] = None
+            
+            self.perform_update(serializer)
+            return Response(serializer.data)
+        
+        # 2. 이 일정과 이후의 모든 반복 일정 수정
+        elif update_type == 'this_and_future':
+            # 원본 일정에 연결된 경우
+            if event.parent_event:
+                # 원본 일정 찾기
+                parent = event.parent_event
+                
+                # 이 날짜 이후의 일정들만 삭제 (이전 일정들은 그대로 유지)
+                Event.objects.filter(
+                    parent_event=parent,
+                    event_day__gte=event.event_day
+                ).delete()
+                
+                # 새 반복 설정으로 이 일정 생성
+                # 기존 데이터에 요청 데이터를 병합 (event_day 값은 유지)
+                new_data = {**request.data}
+                new_data['event_day'] = event.event_day  # 원래 날짜 유지
+                new_data['parent_event'] = None  # 이 일정은 새로운 반복 시리즈의 부모가 됨
+                
+                serializer = self.get_serializer(data=new_data)
+                serializer.is_valid(raise_exception=True)
+                new_event = serializer.save()
+                
+                # 새 일정을 기반으로 향후 반복 일정 생성
+                if new_event.is_recurring and new_event.recurrence_pattern:
+                    self.create_recurring_events(new_event)
+                
+                return Response(serializer.data)
+                
+            # 자신이 원본 일정인 경우
+            else:
+                # 이 날짜 이후의 모든 반복 일정 삭제
+                Event.objects.filter(
+                    parent_event=event,
+                    event_day__gt=event.event_day
+                ).delete()
+                
+                # 원본 일정 업데이트
+                serializer = self.get_serializer(event, data=request.data, partial=True)
+                serializer.is_valid(raise_exception=True)
+                updated_event = serializer.save()
+                
+                # 업데이트된 설정으로 향후 반복 일정 다시 생성
+                if updated_event.is_recurring and updated_event.recurrence_pattern:
+                    self.create_recurring_events(updated_event)
+                
+                return Response(serializer.data)
+        
+        # 3. 모든 반복 일정 수정
+        elif update_type == 'all':
+            # 원본 일정에 연결된 경우
+            if event.parent_event:
+                # 원본 일정 찾기
+                parent = event.parent_event
+                
+                # 모든 반복 일정 삭제
+                Event.objects.filter(parent_event=parent).delete()
+                
+                # 원본 일정 업데이트
+                parent_serializer = self.get_serializer(parent, data=request.data, partial=True)
+                parent_serializer.is_valid(raise_exception=True)
+                updated_parent = parent_serializer.save()
+                
+                # 업데이트된 설정으로 모든 반복 일정 다시 생성
+                if updated_parent.is_recurring and updated_parent.recurrence_pattern:
+                    self.create_recurring_events(updated_parent)
+                
+                # 현재 보고 있던 일정 정보로 응답
+                current_event = Event.objects.filter(
+                    parent_event=updated_parent,
+                    event_day=event.event_day
+                ).first() or updated_parent
+                
+                serializer = self.get_serializer(current_event)
+                return Response(serializer.data)
+                
+            # 자신이 원본 일정인 경우
+            else:
+                # 모든 연결된 반복 일정 삭제
+                Event.objects.filter(parent_event=event).delete()
+                
+                # 원본 일정 업데이트
+                serializer = self.get_serializer(event, data=request.data, partial=True)
+                serializer.is_valid(raise_exception=True)
+                updated_event = serializer.save()
+                
+                # 업데이트된 설정으로 모든 반복 일정 다시 생성
+                if updated_event.is_recurring and updated_event.recurrence_pattern:
+                    self.create_recurring_events(updated_event)
+                
+                return Response(serializer.data)
+        
+        return Response({"error": "잘못된 update_type 값입니다."}, status=status.HTTP_400_BAD_REQUEST)
 
 class DailyConversationSummaryFilter(filters.FilterSet):
     start_date = filters.DateFilter(field_name='summary_date', lookup_expr='gte')
