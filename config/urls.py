@@ -23,9 +23,11 @@ from django.conf import settings
 from django.http import HttpResponse
 
 def health_check(request):
+    
     return HttpResponse("OK", status=200)
 
 urlpatterns = [
+    path('', health_check, name='health-check'),
     path("admin/", admin.site.urls),
     path("v1/accounts/", include("accounts.urls")),
     path("v1/llm/", include("llm.urls")),
