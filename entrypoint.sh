@@ -29,6 +29,9 @@ case "$SERVICE_TYPE" in
         exec celery -A config worker -l info
         ;;
     "celery-beat")
+        echo "Running migrate for django_celery_beat..."
+        python manage.py migrate django_celery_beat
+        
         echo "Starting Celery Beat..."
         exec celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
         ;;
@@ -36,7 +39,3 @@ case "$SERVICE_TYPE" in
         exec "$@"
         ;;
 esac
-
-
-sudo docker exec -it current-web-1 pip install Pillow
-sudo docker exec -it current-web-1 python manage.py migrate

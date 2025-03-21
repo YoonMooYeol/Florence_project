@@ -20,6 +20,11 @@ from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from django.conf.urls.static import static
 from django.conf import settings
+from django.http import HttpResponse
+
+def health_check(request):
+    return HttpResponse("OK", status=200)
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("v1/accounts/", include("accounts.urls")),
@@ -36,6 +41,7 @@ urlpatterns = [
     
     # 소셜 로그인 URL
     path('v1/accounts/social/', include('allauth.socialaccount.urls')),
+    path('health/', health_check, name='health-check'),
 ]
 
 if settings.DEBUG:
