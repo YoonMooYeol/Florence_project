@@ -1,10 +1,8 @@
+version: "3.9"
 services:
   web:
     build: .
-    # EB ECR 리포지토리를 사용한다면 build 후 push된 이미지를 pull 할 수도 있지만,
-    # 여기서는 build: . 형태로 Dockerfile 사용
     image: 954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/simple-docker-service-0ace5acaf2a1
-    # command는 entrypoint.sh에서 SERVICE_TYPE=web일 때 gunicorn을 실행하므로 생략
     volumes:
       - static_volume:/app/static
       - media_volume:/app/media
@@ -16,22 +14,12 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: "db"
+      # 중요: DB_HOST를 RDS 엔드포인트로 변경 (예시: my-rds-endpoint.amazonaws.com)
+      DB_HOST: ${RDS_HOST}
       DB_PORT: "5432"
       SERVICE_TYPE: "web"
     depends_on:
-      - db
-      - redis
-    restart: always
-
-  db:
-    image: postgres:15
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
-    environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      - redis # db 제거했으므로 db 의존성 제거, redis만 남김
     restart: always
 
   redis:
@@ -44,9 +32,8 @@ services:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
-      # web 컨테이너와 동일 경로로 맞추고 싶다면 /app/static /app/media 로 바꿔도 OK
-      - static_volume:/home/app/static
-      - media_volume:/home/app/media
+      - static_volume:/home/app/static # volumes 경로 유지
+      - media_volume:/home/app/media  # volumes 경로 유지
     depends_on:
       - web
     restart: always
@@ -54,9 +41,8 @@ services:
   celery-worker:
     build: .
     image: 954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/simple-docker-service-0ace5acaf2a1
-    # command는 entrypoint.sh에서 SERVICE_TYPE=celery-worker일 때 지정
     volumes:
-      - .:/app
+      - .:/app # celery worker volumes 유지 (필요에 따라 제거 고려)
     environment:
       SECRET_KEY: ${SECRET_KEY}
       DEBUG: "0"
@@ -65,20 +51,19 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: "db"
+      # 중요: DB_HOST를 RDS 엔드포인트로 변경 (예시: my-rds-endpoint.amazonaws.com)
+      DB_HOST: ${RDS_HOST}
       DB_PORT: "5432"
       SERVICE_TYPE: "celery-worker"
     depends_on:
-      - db
-      - redis
+      - redis # db 제거했으므로 db 의존성 제거, redis만 남김
     restart: always
 
   celery-beat:
     build: .
     image: 954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/simple-docker-service-0ace5acaf2a1
-    # command는 entrypoint.sh에서 SERVICE_TYPE=celery-beat일 때 지정
     volumes:
-      - .:/app
+      - .:/app # celery beat volumes 유지 (필요에 따라 제거 고려)
     environment:
       SECRET_KEY: ${SECRET_KEY}
       DEBUG: "0"
@@ -87,15 +72,15 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: "db"
+      # 중요: DB_HOST를 RDS 엔드포인트로 변경 (예시: my-rds-endpoint.amazonaws.com)
+      DB_HOST: ${RDS_HOST}
       DB_PORT: "5432"
       SERVICE_TYPE: "celery-beat"
     depends_on:
-      - db
-      - redis
+      - redis # db 제거했으므로 db 의존성 제거, redis만 남김
     restart: always
 
 volumes:
-  postgres_data:
   static_volume:
   media_volume:
+  postgres_data: # 더 이상 사용하지 않으므로 제거 가능
