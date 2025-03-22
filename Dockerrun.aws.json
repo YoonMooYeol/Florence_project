@@ -1,15 +1,15 @@
 {
-    "AWSEBDockerrunVersion": 1,
+    "AWSEBDockerrunVersion": 3,
     "image": {
-      "name": "954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/simple-docker-service-0ace5acaf2a1",
-      "update": "true"
+        "name": "954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/simple-docker-service-0ace5acaf2a1",
+        "update": "true"
     },
     "containerDefinitions": [
-      {
-        "name": "simple-docker-service",
-        "image": "954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/simple-docker-service-0ace5acaf2a1",
-        "memory": 512,
-        "essential": true
-      }
+        {
+            "name": "simple-docker-service",
+            "image": "954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/simple-docker-service-0ace5acaf2a1",
+            "memory": 512,
+            "essential": true
+        }
     ]
-  }
+}
