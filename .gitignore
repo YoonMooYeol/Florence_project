@@ -12,6 +12,7 @@ __pycache__/
 /data/*
 0*.py
 
+# Elastic Beanstalk
 
 
 # Distribution / packaging
