@@ -31,5 +31,5 @@ jobs:
           region: ${{ secrets.AWS_REGION }}
           application_name: "new-nooridal"
           environment_name: "New-nooridal-env-6"
-          version_label: "New-nooridal-v7"
+          version_label: "New-nooridal-v8"
           deployment_package: deploy.zip
