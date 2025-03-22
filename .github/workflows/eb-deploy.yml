@@ -30,6 +30,6 @@ jobs:
           aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           region: ${{ secrets.AWS_REGION }}
           application_name: "new-nooridal"
-          environment_name: "New-nooridal-env-5"
+          environment_name: "New-nooridal-env-6"
           version_label: ${{ github.sha }}
           deployment_package: deploy.zip
