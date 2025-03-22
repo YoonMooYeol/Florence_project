@@ -2,7 +2,7 @@ branch-defaults:
   develop_6:
     environment: null
   develop_9:
-    environment: Nooridal-env-2
+    environment: Nooridal-env-6
   main:
     environment: null
     group_suffix: null

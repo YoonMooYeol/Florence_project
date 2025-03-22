@@ -106,8 +106,6 @@
 # EB에서 version에 대해 "obsolete" 경고가 나오는 경우는 아예 제거하거나, 그냥 둬도 동작 자체에는 문제가 없습니다.
 # 여기서는 편의상 제거하거나, version: "3.8"으로 표기만 둡니다.
 
-version: '3.8'
-
 services:
   web:
     build: .
