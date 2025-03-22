@@ -48,20 +48,18 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }} 
           aws-region: ${{ secrets.AWS_REGION }}  
 
-      - name: Zip project files (deploy.zip에 Dockerrun.aws.json, docker-compose.yml 포함)
+      - name: Zip project files
         run: |
-          zip -r deploy.zip Dockerrun.aws.json docker-compose.yml # deploy.zip에 필요한 파일만 포함
-          # 또는 전체 프로젝트 파일을 포함해야 하는 경우:
-          # zip -r deploy.zip . -x "*.git*" "node_modules/*" "venv/*" 
-
-          - name: Deploy to Elastic Beanstalk
-          uses: einaregilsson/beanstalk-deploy@v20
-          with:
+          zip -r deploy.zip Dockerrun.aws.json docker-compose.yml
+          
+            - name: Deploy to Elastic Beanstalk
+            uses: einaregilsson/beanstalk-deploy@v20
+            with:
             aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
             aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
             region: ap-northeast-2
             application_name: "new-nooridal"
             environment_name: "New-nooridal-env-6"
-            version_label: "New-nooridal-v${{ github.run_number }}"
+            version_label: "New-nooridal-v33"
             deployment_package: deploy.zip
-            version_description: "Image: ${{ needs.build-and-push.outputs.image }}" # 배포 버전 설명에 이미지 정보 추가
+            version_description: "Image: ${{ needs.build-and-push.outputs.image }}"
