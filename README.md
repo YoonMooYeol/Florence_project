@@ -16,8 +16,8 @@ Florence 프로젝트는 Django 기반의 웹 애플리케이션으로, 캘린�
 
 ### 사전 요구사항
 
-- Docker 및 Docker Compose 설치
-- Python 3.8 이상 설치
+- Docker 및 Docker Compose
+- Python 3.12 이상 설치
 
 ### 환경 변수 설정
 
