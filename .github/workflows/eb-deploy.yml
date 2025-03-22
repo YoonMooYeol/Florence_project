@@ -51,15 +51,15 @@ jobs:
       - name: Zip project files
         run: |
           zip -r deploy.zip Dockerrun.aws.json docker-compose.yml
-          
-            - name: Deploy to Elastic Beanstalk
-            uses: einaregilsson/beanstalk-deploy@v20
-            with:
-            aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
-            aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            region: ap-northeast-2
-            application_name: "new-nooridal"
-            environment_name: "New-nooridal-env-6"
-            version_label: "New-nooridal-v33"
-            deployment_package: deploy.zip
-            version_description: "Image: ${{ needs.build-and-push.outputs.image }}"
+        
+      - name: Deploy to Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v20
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          region: ap-northeast-2
+          application_name: "new-nooridal"
+          environment_name: "New-nooridal-env-6"
+          version_label: "New-nooridal-v${{ github.run_number }}"
+          deployment_package: deploy.zip
+          version_description: "Image: ${{ needs.build-and-push.outputs.image }}"
