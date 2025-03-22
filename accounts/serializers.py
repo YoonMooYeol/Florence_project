@@ -257,18 +257,13 @@ class FollowUserSerializer(serializers.ModelSerializer):
 
 
 class PhotoSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(use_url=True)
+
     class Meta:
         model = Photo
         fields = ['id', 'user', 'image', 'created_at', 'updated_at']
         read_only_fields = ['user']
 
-    def get_image(self, obj):
-        request = self.context.get('request')
-        print("FILES:", request.FILES)
-        print("DATA:", request.data)
-        if obj.image and hasattr(obj.image, 'url') and request:
-            return request.build_absolute_uri(obj.image.url)
-        return None
 
 
 
