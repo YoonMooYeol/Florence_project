@@ -57,5 +57,4 @@ urlpatterns = [
     path('users/me/',include(profile_image_router.urls)),
 
 
-
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

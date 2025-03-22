@@ -166,7 +166,7 @@ class Follow(models.Model):
         return f"{self.follower} -> {self.following}"
 
 def user_photo_path(instance, filename):
-    return f'users/{instance.user_id}/photos/{filename}'
+    return f'users/{instance.pk}/photos/{filename}'
 
 class Photo(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="photo")
