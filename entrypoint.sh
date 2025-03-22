@@ -3,7 +3,7 @@
 # PostgreSQL 서버 대기 (더욱 Robust하게 연결 확인)
 if [ "$DATABASE" = "postgres" ]; then
     echo "PostgreSQL 서버 대기 시작..."
-    until PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c '\q'; do
+    until PGPASSWORD="$RDS_DB_PASSWORD" psql -h "$RDS_HOSTNAME" -U "$DB_USER" -d "$RDS_DB_NAME" -p "$RDS_PORT" -c '\q'; do
       sleep 1
       echo "PostgreSQL 연결 재시도..."
     done
