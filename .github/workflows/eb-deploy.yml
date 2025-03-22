@@ -17,7 +17,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws_region: ${{ secrets.AWS_REGION }}
+          aws_region: ${{ secrets.AWS_REGION }}a
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -46,7 +46,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws_region: ap-northeast-2
+          aws_region: ap
 
       - name: Zip project files (deploy.zip에 Dockerrun.aws.json, docker-compose.yml 포함)
         run: |
@@ -59,7 +59,7 @@ jobs:
         with:
           aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          region: ap-northeast-2
+          region: ${{ secrets.AWS_REGION }}
           application_name: "new-nooridal"
           environment_name: "New-nooridal-env-6"
           version_label: "New-nooridal-v${{ github.run_number }}"
