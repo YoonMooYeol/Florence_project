@@ -166,16 +166,13 @@ class Follow(models.Model):
         return f"{self.follower} -> {self.following}"
 
 def user_photo_path(instance, filename):
-    return f'users/{instance.user_id}/photos/{filename}'
+    return f'users/{instance.pk}/photos/{filename}'
 
 class Photo(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="photos")
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="photo")
     image = models.ImageField(upload_to=user_photo_path, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = ['user']  # 사용자별로 하나의 프로필 사진만 등록 가능하도록 제한
 
     def __str__(self):
         return f"{self.user.username}'s photo"

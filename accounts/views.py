@@ -7,6 +7,7 @@ from datetime import datetime
 
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, viewsets, permissions
+from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
@@ -16,9 +17,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.decorators import action
 
 from django.contrib.auth.hashers import get_random_string
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, JsonResponse
 from django.contrib.auth import authenticate
 from django.conf import settings
 from django.core.mail import get_connection, EmailMultiAlternatives
@@ -1086,62 +1088,51 @@ class RetrieveUserByEmailView(GenericAPIView):
             return Response({"detail": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
 
 
-class ProfilePhotoView(APIView):
-    permission_classes = [IsAuthenticated]
+class PhotoViewSet(viewsets.ModelViewSet):
+    serializer_class = PhotoSerializer
+    lookup_field = 'id'
 
-    def get(self, request, user_id=None):
-        """
-        특정 사용자의 프로필 사진을 조회. user_id가 없으면 현재 사용자 기준.
-        """
-        if user_id:
-            user = get_object_or_404(User, id=user_id)
-        else:
-            user = request.user
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
-        photo = Photo.objects.filter(user=user).first()
-        if not photo:
-            return Response({"detail": "등록된 프로필 사진이 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+    def get_queryset(self):
+        return Photo.objects.all()
 
-        serializer = PhotoSerializer(photo, context={'request': request})
-        return Response(serializer.data)
+    def perform_create(self, serializer):
+        if Photo.objects.filter(user=self.request.user).exists():
+            raise PermissionDenied("이미 프로필 사진이 존재합니다.")
 
-    def post(self, request):
-        """
-        현재 사용자에게 프로필 사진 등록. 기존 사진 있으면 오류 반환.
-        """
-        if Photo.objects.filter(user=request.user).exists():
-            return Response({"detail": "이미 등록된 사진이 있습니다."}, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save(user=self.request.user)
 
-        serializer = PhotoSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            serializer.save(user=request.user)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def perform_update(self, serializer):
+        photo = self.get_object()
 
-    def put(self, request):
-        """
-        현재 사용자의 프로필 사진 수정
-        """
-        photo = Photo.objects.filter(user=request.user).first()
-        if not photo:
-            return Response({"detail": "수정할 프로필 사진이 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+        if not photo.image:
+            raise PermissionDenied("등록된 프로필 사진이 없어서 수정할 수 없습니다.")
 
-        serializer = PhotoSerializer(photo, data=request.data, partial=True, context={'request': request})
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if photo.user != self.request.user:
+            raise PermissionDenied("자신의 사진만 수정할 수 있습니다.")
 
-    def delete(self, request):
-        """
-        현재 사용자의 프로필 사진 삭제
-        """
-        photo = Photo.objects.filter(user=request.user).first()
-        if not photo:
-            return Response({"detail": "삭제할 프로필 사진이 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+        serializer.save()
 
-        photo.delete()
-        return Response({"detail": "프로필 사진이 삭제되었습니다."}, status=status.HTTP_204_NO_CONTENT)
+    def perform_destroy(self, instance):
+        if instance.user != self.request.user:
+            raise PermissionDenied("자신의 사진만 삭제할 수 있습니다.")
+        instance.delete()
+
+    def retrieve(self, request, *args, **kwargs):
+        try:
+            photo = Photo.objects.get(user=request.user)
+        except Photo.DoesNotExist:
+            return JsonResponse({"message": "No photo found."}, status=404)
+
+        return JsonResponse({
+            "id": photo.id,
+            "image_url": photo.image.url if photo.image else None,
+            "image_exists": bool(photo.image)
+        })
 
 
 
