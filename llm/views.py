@@ -26,7 +26,7 @@ from accounts.models import User
 
 
 from dotenv import load_dotenv
-from .openai_agent import openai_agent_service, PregnancyContext  # OpenAI 에이전트 서비스 임포트
+from .openai_agent import openai_agent_service, PregnancyContext, Runner  # OpenAI 에이전트 서비스 임포트
 
 load_dotenv()
 
@@ -172,150 +172,6 @@ class ChatRoomSummarizeView(APIView):
             logger.error(f"채팅방 요약 중 오류: {str(e)}")
             return Response({"error": f"요청 처리 중 오류가 발생했습니다: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# # LLMAgentQueryView 및 FlorenceAgentView 대신 OpenAI 에이전트 뷰로 대체
-# class OpenAIAgentQueryView(generics.GenericAPIView): # 추후 삭제 예정***
-#     """
-#     OpenAI 에이전트 API
-    
-#     이 API는 OpenAI 에이전트를 사용하여 임신 관련 질문에 답변합니다.
-#     산모 건강, 태아 발달, 정부 정책, 영양, 운동 등 다양한 영역의 질문을 처리합니다.
-#     """
-#     permission_classes = [AllowAny]
-    
-#     def get_serializer_class(self):
-#         from rest_framework import serializers
-        
-#         class OpenAIAgentQuerySerializer(serializers.Serializer):
-#             user_id = serializers.CharField(required=True, help_text="사용자 ID")
-#             query_text = serializers.CharField(required=True, help_text="사용자 질문")
-#             baby_name = serializers.CharField(required=False, help_text="태아 이름", allow_blank=True)
-#             pregnancy_week = serializers.IntegerField(required=False, help_text="임신 주차", allow_null=True)
-#             thread_id = serializers.CharField(required=False, help_text="대화 스레드 ID", allow_blank=True)
-#             stream = serializers.BooleanField(required=False, default=False, help_text="스트리밍 응답 여부")
-            
-#         return OpenAIAgentQuerySerializer
-    
-#     async def _process_query(self, query_data):
-#         """비동기로 에이전트 쿼리 처리"""
-#         return await openai_agent_service.process_query(
-#             query_text=query_data["query_text"],
-#             user_id=query_data["user_id"],
-#             thread_id=query_data.get("thread_id"),
-#             pregnancy_week=query_data.get("pregnancy_week"),
-#             baby_name=query_data.get("baby_name"),
-#             stream=query_data.get("stream", False)
-#         )
-    
-#     def _event_stream(self, stream_result):
-#         """이벤트 스트림 생성기"""
-#         try:
-#             # 스트리밍 초기 응답
-#             yield f"data: {json.dumps({'status': 'start'})}\n\n"
-            
-#             # 누적 응답 저장
-#             accumulated_response = ""
-            
-#             # 비동기 이벤트 루프 생성
-#             loop = get_agent_loop()
-            
-#             async def process_stream():
-#                 nonlocal accumulated_response
-                
-#                 async for event in stream_result.stream_events():
-#                     # 텍스트 이벤트 처리
-#                     if event.type == "raw_response_event":
-#                         if hasattr(event.data, 'delta') and event.data.delta:
-#                             accumulated_response += event.data.delta
-#                             yield f"data: {json.dumps({'delta': event.data.delta, 'complete': False})}\n\n"
-                    
-#                     # 도구 사용 이벤트 처리
-#                     elif event.type == "tool_start":
-#                         yield f"data: {json.dumps({'tool': event.data.name, 'status': 'start'})}\n\n"
-                    
-#                     elif event.type == "tool_end":
-#                         yield f"data: {json.dumps({'tool': event.data.name, 'status': 'end'})}\n\n"
-                    
-#                     # 핸드오프 이벤트 처리
-#                     elif event.type == "handoff":
-#                         yield f"data: {json.dumps({'handoff': True, 'from': event.data.from_agent, 'to': event.data.to_agent})}\n\n"
-            
-#                 # 완료 이벤트
-#                 yield f"data: {json.dumps({'response': accumulated_response, 'complete': True})}\n\n"
-            
-#             # 스트림 처리 실행
-#             for chunk in loop.run_until_complete(process_stream()):
-#                 yield chunk
-                
-#             # 루프 종료
-#             # loop.close()
-            
-#         except Exception as e:
-#             logger.error(f"스트리밍 처리 중 오류: {str(e)}")
-#             yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        
-#         finally:
-#             # 종료 이벤트
-#             yield f"data: {json.dumps({'status': 'done'})}\n\n"
-    
-#     def post(self, request):
-#         """OpenAI 에이전트 API 엔드포인트"""
-#         try:
-#             # 요청 데이터 검증
-#             serializer = self.get_serializer(data=request.data)
-#             serializer.is_valid(raise_exception=True)
-            
-#             # 검증된 데이터 추출
-#             query_data = serializer.validated_data
-#             logger.info(f"에이전트 쿼리: '{query_data['query_text']}' (user_id: {query_data['user_id']})")
-            
-#             # 스트리밍 응답 여부 확인
-#             is_stream = query_data.get("stream", False)
-            
-#             if is_stream:
-#                 # 비동기 이벤트 루프 생성
-#                 loop = get_agent_loop()
-                
-#                 # 에이전트 실행
-#                 stream_result = loop.run_until_complete(self._process_query(query_data))
-#                 # loop.close()
-                
-#                 # 스트리밍 응답 생성
-#                 response = StreamingHttpResponse(
-#                     self._event_stream(stream_result),
-#                     content_type='text/event-stream'
-#                 )
-#                 response['X-Accel-Buffering'] = 'no'
-#                 response['Cache-Control'] = 'no-cache'
-#                 return response
-#             else:
-#                 # 일반 응답
-#                 loop = get_agent_loop()
-#                 result = loop.run_until_complete(self._process_query(query_data))
-#                 # loop.close()
-                
-#                 return Response(result, status=status.HTTP_200_OK)
-                
-#         except Exception as e:
-#             logger.error(f"에이전트 API 오류: {str(e)}")
-#             logger.exception("상세 오류:")
-#             return Response(
-#                 {"error": "서버 오류가 발생했습니다. 나중에 다시 시도해주세요."},
-#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-#             )
-
-# def sync_generator_from_async(loop, aiter):
-#     """
-#     async generator -> sync generator 로 변환하는 브릿지 함수.
-#     동기 코드에서 'aiter.__anext__()'를 'run_until_complete()'로 반복 호출하여
-#     한 덩어리씩 yield
-#     """
-#     while True:
-#         try:
-#             item = loop.run_until_complete(aiter.__anext__())  # 한 토큰씩 가져오기
-#         except StopAsyncIteration:
-#             break
-#         yield item
-
 class OpenAIAgentStreamView(APIView):
     """
     ThreadPoolExecutor를 사용하여 비동기-동기 컨텍스트 전환 문제를 해결한 SSE 스트리밍 뷰
@@ -369,6 +225,8 @@ class OpenAIAgentStreamView(APIView):
                     # 실시간으로 큐에 추가
                     accumulated_response = ""
                     
+                    print(f"스트림 응답 시작: needs_verification={getattr(stream_result, 'needs_verification', 'undefined')}")
+                    
                     async for event in stream_result.stream_events():
                         if event.type == "raw_response_event" and hasattr(event.data, 'delta'):
                             accumulated_response += event.data.delta
@@ -388,6 +246,49 @@ class OpenAIAgentStreamView(APIView):
                     context = PregnancyContext(user_id=user_id, thread_id=request.data.get("thread_id"))
                     await context.save_to_db_async(query_text, accumulated_response)
                     
+                    # 검증이 필요한 경우 스트리밍 후 검증 수행
+                    if hasattr(stream_result, 'needs_verification') and stream_result.needs_verification:
+                        print(f"검증 필요: 응답 길이 = {len(accumulated_response)} 글자")
+                        # 검증 진행 중임을 알림
+                        chunk_queue.put({"verification_status": "start"})
+                        
+                        try:
+                            # 데이터 검증 에이전트 실행
+                            verification_agent = openai_agent_service.get_data_verification_agent(context)
+                            print("검증 에이전트 생성 완료")
+                            
+                            verification_result = await Runner.run(
+                                verification_agent,
+                                accumulated_response,
+                                context=context
+                            )
+                            print("검증 실행 완료")
+                            
+                            # 검증 결과 저장 및 전송
+                            validation_result = verification_result.final_output
+                            context.add_verification_result(validation_result)
+                            
+                            print(f"검증 결과: is_accurate={validation_result.is_accurate}, score={validation_result.confidence_score}")
+                            
+                            # 검증 결과 전송
+                            chunk_queue.put({
+                                "verification_status": "complete",
+                                "verification": {
+                                    "is_accurate": validation_result.is_accurate,
+                                    "confidence_score": validation_result.confidence_score,
+                                    "reason": validation_result.reason,
+                                    "corrected_information": validation_result.corrected_information
+                                }
+                            })
+                        except Exception as e:
+                            print(f"검증 과정에서 오류 발생: {str(e)}")
+                            chunk_queue.put({
+                                "verification_status": "error",
+                                "error": str(e)
+                            })
+                    else:
+                        print("검증이 필요하지 않습니다")
+                    
                     # 완료 메시지
                     chunk_queue.put({
                         "response": accumulated_response,
@@ -395,6 +296,7 @@ class OpenAIAgentStreamView(APIView):
                     })
                     chunk_queue.put({"status": "done"})
                 except Exception as e:
+                    print(f"스트림 프로세서 오류: {str(e)}")
                     chunk_queue.put({"error": str(e)})
                     chunk_queue.put({"status": "done"})
                 finally:

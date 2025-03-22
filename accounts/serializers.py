@@ -5,11 +5,12 @@ from django.contrib.auth.password_validation import validate_password
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True)
+    profile_photo = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = ['user_id', 'username', 'name', 'email', 'phone_number', 'password', 'password_confirm',
-                  'gender', 'is_pregnant', 'address'
+                  'gender', 'is_pregnant', 'address', 'profile_photo'
                 ]
         read_only_fields = ['user_id']
     
@@ -64,9 +65,16 @@ class UserSerializer(serializers.ModelSerializer):
             is_pregnant=is_pregnant,
             address=address
         )
-        
+
         return user
-        
+
+    def get_profile_photo(self, obj):
+        photo = Photo.objects.filter(user=obj).first()
+        if photo and photo.image:
+            request = self.context.get('request')
+            return request.build_absolute_uri(photo.image.url)
+        return None
+
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -97,7 +105,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     """사용자 정보 수정용 시리얼라이저"""
     class Meta:
         model = User
-        fields = ('username', 'name', 'email', 'phone_number', 'gender', 'address', 'is_pregnant')  # 실제 모델에 있는 필드들만 포함
+        fields = ('username', 'name', 'email', 'phone_number', 'gender', 'address', 'is_pregnant', 'image')  # 실제 모델에 있는 필드들만 포함
         read_only_fields = ('user_id', 'email')  # 수정 불가능한 필드. user_id는 자동으로 생성되므로 수정 불가능
 
 
@@ -249,11 +257,13 @@ class FollowUserSerializer(serializers.ModelSerializer):
 
 
 class PhotoSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(use_url=True)
+
     class Meta:
         model = Photo
         fields = ['id', 'user', 'image', 'created_at', 'updated_at']
         read_only_fields = ['user']
-        extra_kwargs = {"user": {"read_only": True}}
+
 
 
 

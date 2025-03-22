@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel
+import time
 
 from agents import Agent, Runner, WebSearchTool, FileSearchTool, trace, handoff, input_guardrail, output_guardrail, GuardrailFunctionOutput
 from agents import RunHooks, RunContextWrapper, Usage, Tool
@@ -46,16 +47,27 @@ class PregnancyAgentHooks(RunHooks):
         })
         
     async def on_tool_start(self, context: RunContextWrapper, agent: Agent, tool: Tool) -> None:
+        current_time = timezone.now()
         self.event_counter += 1
         tool_key = f"{agent.name}_{tool.name}_{self.event_counter}"
-        self.tool_results[tool_key] = {"start_time": timezone.now(), "result": None}
+        self.tool_results[tool_key] = {
+            "start_time": current_time, 
+            "result": None,
+            "elapsed_ms": 0
+        }
+        print(f"도구 사용 시작: {tool.name} ({current_time.strftime('%H:%M:%S.%f')})")
         
     async def on_tool_end(self, context: RunContextWrapper, agent: Agent, tool: Tool, result: str) -> None:
+        current_time = timezone.now()
         self.event_counter += 1
         tool_key = f"{agent.name}_{tool.name}_{self.event_counter-1}"
         if tool_key in self.tool_results:
-            self.tool_results[tool_key]["end_time"] = timezone.now()
+            start_time = self.tool_results[tool_key]["start_time"]
+            elapsed_ms = (current_time - start_time).total_seconds() * 1000
+            self.tool_results[tool_key]["end_time"] = current_time
             self.tool_results[tool_key]["result"] = result
+            self.tool_results[tool_key]["elapsed_ms"] = elapsed_ms
+            print(f"도구 사용 완료: {tool.name} ({current_time.strftime('%H:%M:%S.%f')}) - 소요시간: {elapsed_ms:.0f}ms")
 
     def get_metrics(self) -> Dict[str, Any]:
         """에이전트 실행 메트릭 반환"""
@@ -230,49 +242,6 @@ class PregnancyContext:
         )
         return conversation
     
-    def save_to_db(self, user_input: str, assistant_output: str,
-                   source_documents=None, using_rag=False):
-        """
-        (새로 추가)
-        동기 ORM으로 DB에 대화 저장.
-        동기 뷰 내부에서 편하게 호출하기 위함.
-        """
-        from accounts.models import User, Pregnancy
-        from .models import ChatManager, LLMConversation
-
-        if not self.user_id:
-            return None
-
-        try:
-            user = User.objects.get(user_id=self.user_id)  # 동기 ORM
-        except User.DoesNotExist:
-            print(f"대화 저장 중 오류: user_id={self.user_id} 해당 사용자가 없습니다.")
-            return None
-
-        # 채팅방 관련 처리
-        chat_room = None
-        if self.thread_id:
-            chat_room = ChatManager.objects.filter(chat_id=self.thread_id).first()
-            if not chat_room:
-                # 없으면 생성
-                pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
-                chat_room = ChatManager.objects.create(
-                    user=user,
-                    pregnancy=pregnancy,
-                    is_active=True
-                )
-
-        # 대화 저장
-        conversation = LLMConversation.objects.create(
-            user=user,
-            chat_room=chat_room,
-            query=user_input,
-            response=assistant_output,
-            user_info=self.user_info,
-            source_documents=source_documents or [],
-            using_rag=using_rag
-        )
-        return conversation
 
 # 가드레일 정의
 @input_guardrail
@@ -362,7 +331,7 @@ general_agent_base_instructions = """
 medical_agent_base_instructions = """
 당신은 임신 주차별 의학 정보를 제공하는 전문가입니다.
 사용자의 임신 주차에 맞는 정확한 의학 정보를 제공하세요.
-검색이나 데이터를 가져와야할때는 사용자에게 "잠시만요. 정확한 정보전달을 위해 검색을 진행하겠습니다."라고 알려준 후 검색을 진행하세요.
+검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 포함되어야 할 정보는 태아발달, 추가 칼로리, 운동, 영양제, 주차별 받아야할 병원진료 등등을 제공하세요. 제공된 정보는 또 제공될 필요는 없지만 필요하다면 제공하세요.
 항상 "이 정보는 일반적인 안내이며, 구체적인 의료 조언은 의사와 상담하세요"라는 면책 조항을 포함하세요.
 모든 답변은 한국어로 제공하세요.
@@ -380,13 +349,13 @@ data_verification_agent_base_instructions = """
 
 policy_agent_base_instructions = """
 임산부에게 정부에서 지원하는 정보과 URL을 제공하는 전문가입니다.
-검색이나 데이터를 가져와야할때는 사용자에게 "잠시만요. 정확한 정보전달을 위해 검색을 진행하겠습니다."라고 알려준 후 검색을 진행하세요.
+검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 맘편한 임신 원스톱 서비스같은 정보를 제공하세요. 그리고 더 많은 정보를 웹검색을 통해 제공하세요. 꼭 지원할수있는 url과 연락처를 제공하세요.
 """
 
 nutrition_agent_base_instructions = """
 당신은 임신 주차별 영양 및 식단 정보를 제공하는 전문가입니다.
-검색이나 데이터를 가져와야할때는 사용자에게 "잠시만요. 정확한 정보전달을 위해 검색을 진행하겠습니다."라고 알려준 후 검색을 진행하세요.
+검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 임신 주차에 따라 필요한 영양소, 권장 식품, 주의해야 할 식품 등에 대한 정보를 제공하세요.
 모든 답변은 한국어로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 영양 정보를 활용하세요.
@@ -394,7 +363,7 @@ FileSearchTool에서 가져온 임신 주차별 영양 정보를 활용하세요
 
 exercise_agent_base_instructions = """
 당신은 임신 중 안전한 운동 정보를 제공하는 전문가입니다.
-검색이나 데이터를 가져와야할때는 사용자에게 "잠시만요. 정확한 정보전달을 위해 검색을 진행하겠습니다."라고 알려준 후 검색을 진행하세요.
+검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 임신 주차에 따른 적절한 운동 유형, 강도, 주의사항 등을 안내하세요.
 간단한 스트레칭이나 요가 동작도 설명할 수 있습니다.
 모든 답변은 한국어로 제공하세요.
@@ -403,36 +372,11 @@ FileSearchTool에서 가져온 임신 주차별 운동 정보를 활용하세요
 
 emotional_agent_base_instructions = """
 당신은 임신 중 감정 변화와 심리적 건강을 지원하는 웹검색 전문가입니다. 현재 이루어진 모든 대화를 분석해서 사용자에게 조언하세요.
-검색이나 데이터를 가져와야할때는 사용자에게 "잠시만요. 정확한 정보전달을 위해 검색을 진행하겠습니다."라고 알려준 후 검색을 진행하세요.
+검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 또는 임신 중 흔히 겪는 감정 변화, 스트레스 관리법, 심리적 안정을 위한 조언을 웹검색을 통해 제공하세요.
 공감하는 태도로 따뜻한 지원을 제공하되, 전문적인 심리 상담이 필요한 경우는 전문가의 연락처를 권유하세요.
 모든 답변은 한국어로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 감정 정보를 활용하세요.
-"""
-
-# 메인 에이전트 지시사항 수정
-main_agent_base_instructions = """
-당신은 임신과 출산에 관한 정보를 제공하는 산모 도우미입니다.
-사용자의 질문은 이미 분류가 완료되었으며, 당신은 적절한 전문 에이전트에게 연결만 하면 됩니다.
-
-다음은 각 에이전트의 전문 분야입니다:
-1. general_agent: 임신과 출산에 관한 일반적인 정보
-2. medical_agent: 임신 주차별 의학 정보 
-3. policy_agent: 정부 지원 정책 정보
-4. nutrition_agent: 임신 중 영양 및 식단 정보
-5. exercise_agent: 임신 중 안전한 운동 정보
-6. emotional_support_agent: 임신 중 감정 변화와 심리적 건강 지원
-
-에이전트에게 질문을 전달할 때는 다음과 같은 형식의 도구를 사용하세요:
-- transfer_to_general_agent: 일반 정보를 요청할 때
-- transfer_to_medical_agent: 의학 정보를 요청할 때
-- transfer_to_policy_agent: 정책 정보를 요청할 때
-- transfer_to_nutrition_agent: 영양 정보를 요청할 때
-- transfer_to_exercise_agent: 운동 정보를 요청할 때
-- transfer_to_emotional_support_agent: 감정 지원을 요청할 때
-
-사용자의 질문은 '{query_type}' 카테고리로 분류되었으므로, 즉시 해당 전문 에이전트에게 핸드오프하세요.
-모든 답변은 한국어로 제공하세요.
 """
 
 class OpenAIAgentService:
@@ -550,50 +494,6 @@ class OpenAIAgentService:
                 )
             ],
         )
-
-    def get_main_agent(self, context: PregnancyContext, custom_instructions=None) -> Agent:
-        """컨텍스트 기반으로 동적으로 메인 에이전트 생성"""
-        general_agent = self.get_general_agent(context)
-        medical_agent = self.get_medical_agent(context)
-        policy_agent = self.get_policy_agent(context)
-        nutrition_agent = self.get_nutrition_agent(context)
-        exercise_agent = self.get_exercise_agent(context)
-        emotional_support_agent = self.get_emotional_support_agent(context)
-        
-        instructions = custom_instructions or create_agent_instructions(context, main_agent_base_instructions)
-        
-        main_agent = Agent(
-            name="산모 도우미",
-            model=self.model_name,
-            instructions=instructions,
-            handoffs=[
-                handoff(agent=general_agent, tool_name_override="transfer_to_general_agent"),
-                handoff(agent=medical_agent, tool_name_override="transfer_to_medical_agent"),
-                handoff(agent=policy_agent, tool_name_override="transfer_to_policy_agent"),
-                handoff(agent=nutrition_agent, tool_name_override="transfer_to_nutrition_agent"),
-                handoff(agent=exercise_agent, tool_name_override="transfer_to_exercise_agent"),
-                handoff(agent=emotional_support_agent, tool_name_override="transfer_to_emotional_support_agent"),
-            ],
-            input_guardrails=[check_appropriate_content],
-        )
-        
-        # 디버깅: 사용 가능한 모든 도구 출력
-        print("산모 도우미가 사용할 수 있는 도구:")
-        if hasattr(main_agent, 'tools') and main_agent.tools:
-            for tool in main_agent.tools:
-                print(f" - {tool.name}: {tool.description}")
-        else:
-            print(" - 도구가 없거나 접근할 수 없습니다")
-        
-        # 핸드오프 목록 확인
-        if hasattr(main_agent, 'handoffs') and main_agent.handoffs:
-            print("산모 도우미가 사용할 수 있는 핸드오프:")
-            for h in main_agent.handoffs:
-                print(f" - {h.tool_name if hasattr(h, 'tool_name') else '이름 없음'}")
-        else:
-            print(" - 핸드오프가 없거나 접근할 수 없습니다")
-        
-        return main_agent
     
     async def process_query(self, 
                        query_text: str, 
@@ -648,23 +548,10 @@ class OpenAIAgentService:
             hooks = PregnancyAgentHooks()
             
             # 질문 분류
-            print("질문 분류 시작")
+            start_time = time.time()
+            print(f"[{time.time() - start_time:.2f}s] 질문 분류 시작")
             query_classifier = self.get_query_classifier_agent()
             print("질문 분류 에이전트 생성함")
-            # try:
-            #     classification_result = await Runner.run(
-            #         query_classifier,
-            #         query_text,
-            #         hooks=hooks
-            #     )
-            #     print(f"질문 분류 완료: {classification_result.final_output.category}")
-            # except Exception as e:
-            #     print(f"질문 분류 중 오류: {e}")
-            #     print(traceback.format_exc())
-            #     raise e
-
-            # query_type = classification_result.final_output.category
-            # needs_verification = classification_result.final_output.needs_verification
 
             # 최대 3번 재시도
             for attempt in range(3):
@@ -675,7 +562,7 @@ class OpenAIAgentService:
                     )
                     query_type = classification_result.final_output.category
                     needs_verification = classification_result.final_output.needs_verification
-                    print(f"질문 쉽게 분류 완료: {query_type}, {needs_verification}")
+                    print(f"[{time.time() - start_time:.2f}s] 질문 분류 완료: {query_type}")
                     break  # 성공하면 루프 탈출
 
                 except (asyncio.TimeoutError, Exception) as e:
@@ -686,101 +573,78 @@ class OpenAIAgentService:
                         needs_verification = False
                         print(f"질문 겨우 분류 완료: {query_type}, {needs_verification}")
         
-            
-            # 메인 에이전트 생성
-            print("메인 에이전트 생성")
-            main_agent = self.get_main_agent(context)
-            
-            # 결과 변수
-            result_data = {
-                "response": "",
-                "query_type": query_type,
-                "needs_verification": needs_verification,
-                "metrics": {}
-            }
-            
-            # 에이전트 실행
-            if stream:
-                # 스트리밍 응답 (비동기)
-                print("스트리밍 모드로 에이전트 실행")
-                try:
-                    print("Runner.run_streamed 호출 직전")
-                    result = Runner.run_streamed(
-                        main_agent,
-                        query_text,
-                        context=context,
-                        hooks=hooks
-                    )
-                    print(f"Runner.run_streamed 반환됨: {type(result)}")
-                    
-                    # stream_events 메소드 호출 테스트
-                    print("stream_events 메소드 테스트")
-                    try:
-                        # 실제로 호출하진 않고 존재 여부만 확인
-                        if hasattr(result, 'stream_events'):
-                            print(f"stream_events 메소드 존재")
-                            # print(f"stream_events 메소드 존재: {result.stream_events}")
-                        else:
-                            print("stream_events 메소드가 존재하지 않음!")
-                    except Exception as e:
-                        print(f"stream_events 메소드 테스트 중 오류: {e}")
-                    
-                    print("스트리밍 응답 객체 반환 준비")
-                    return result
-                except Exception as e:
-                    print(f"스트리밍 에이전트 실행 중 오류: {e}")
-                    print(traceback.format_exc())
-                    raise e
-            else:
-                # 일반 응답
-                print("일반 모드로 에이전트 실행")
-                result = await Runner.run(
-                    main_agent,
-                    query_text,
-                    context=context,
-                    hooks=hooks
-                )
-                
-                # 응답 추출
-                response_text = result.final_output
-                
-                # 검증이 필요한 경우
-                if needs_verification:
-                    # 데이터 검증 에이전트 실행
-                    verification_agent = self.get_data_verification_agent(context)
-                    verification_result = await Runner.run(
-                        verification_agent,
-                        response_text,
-                        context=context,
-                        hooks=hooks
-                    )
-                    
-                    # 검증 결과 저장
-                    validation_result = verification_result.final_output
-                    context.add_verification_result(validation_result)
-                    
-                    # 검증 정보 추가
-                    result_data["verification"] = {
-                        "is_accurate": validation_result.is_accurate,
-                        "confidence_score": validation_result.confidence_score,
-                        "reason": validation_result.reason,
-                        "corrected_information": validation_result.corrected_information
-                    }
-                
-                # 응답 저장
-                result_data["response"] = response_text
-                result_data["metrics"] = hooks.get_metrics()
-                
-                # 대화 내역 저장
-                context.add_conversation(query_text, response_text)
-                
-                # DB에 대화 저장
-                conversation = await context.save_to_db_async(query_text, response_text)
-                if conversation:
-                    result_data["conversation_id"] = conversation.id
+            # 분류 결과에 따라 바로 적절한 에이전트 선택
+            if query_type == "medical":
+                agent_to_use = self.get_medical_agent(context)
+            elif query_type == "policy":
+                agent_to_use = self.get_policy_agent(context)
+            elif query_type == "nutrition":
+                agent_to_use = self.get_nutrition_agent(context)
+            elif query_type == "exercise":
+                agent_to_use = self.get_exercise_agent(context)
+            elif query_type == "emotional":
+                agent_to_use = self.get_emotional_support_agent(context)
+            else:  # general 또는 기타
+                agent_to_use = self.get_general_agent(context)
+                print("general 또는 기타 에이전트 선택됨")
 
-                print("일반 응답 반환 준비")
-                return result_data
+            # 에이전트 선택 지점
+            print(f"[{time.time() - start_time:.2f}s] {query_type} 에이전트 선택됨")
+
+            # 선택된 에이전트로 바로 실행
+            if stream:
+                result = Runner.run_streamed(agent_to_use, query_text, context=context, hooks=hooks)
+                
+                # 스트리밍 응답과 함께 needs_verification 정보 전달
+                result.needs_verification = needs_verification
+                result.query_type = query_type
+                return result
+            # else:
+            #     result = await Runner.run(agent_to_use, query_text, context=context, hooks=hooks)
+            #     # 응답 추출
+            #     response_text = result.final_output
+                
+            #     # 검증이 필요한 경우
+            #     if needs_verification:
+            #         # 데이터 검증 에이전트 실행
+            #         verification_agent = self.get_data_verification_agent(context)
+            #         verification_result = await Runner.run(
+            #             verification_agent,
+            #             response_text,
+            #             context=context,
+            #             hooks=hooks
+            #         )
+                    
+            #         # 검증 결과 저장
+            #         validation_result = verification_result.final_output
+            #         context.add_verification_result(validation_result)
+                    
+            #         # 검증 정보 추가
+            #         result_data = {
+            #             "response": response_text,
+            #             "verification": {
+            #                 "is_accurate": validation_result.is_accurate,
+            #                 "confidence_score": validation_result.confidence_score,
+            #                 "reason": validation_result.reason,
+            #                 "corrected_information": validation_result.corrected_information
+            #             },
+            #             "metrics": hooks.get_metrics()
+            #         }
+            #     else:
+            #         result_data = {
+            #             "response": response_text,
+            #             "metrics": hooks.get_metrics()
+            #         }
+                
+            #     # 대화 내역 저장
+            #     context.add_conversation(query_text, response_text)
+                
+            #     # DB에 대화 저장
+            #     conversation = await context.save_to_db_async(query_text, response_text)
+            #     if conversation:
+            #         result_data["conversation_id"] = conversation.id
+
+            #     return result_data
         except Exception as e:
             print(f"process_query 전역 예외: {e}")
             print(traceback.format_exc())

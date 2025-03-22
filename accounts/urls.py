@@ -8,17 +8,20 @@ from .views import (
     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetViewSet,
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
     NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView, RegisterSendEmailView,
-    RegisterCheckView, FollowUnfollowView, RetrieveUserByEmailView, ProfilePhotoView,
-    FollowListView, FollowersListView
+    RegisterCheckView, FollowUnfollowView, FollowListView, FollowersListView, RetrieveUserByEmailView,
+    PhotoViewSet
 )
 
 pregnancy_router = DefaultRouter()
 router = DefaultRouter()
+profile_image_router = DefaultRouter()
 
 pregnancy_router.register(r'pregnancies', PregnancyViewSet, basename='pregnancy')
 router.register(r'reset_code', PasswordResetViewSet, basename='reset-send-code')
 router.register(r'check_code', PasswordResetCheckViewSet, basename='reset-check-code')
 router.register(r'confirm_code', PasswordResetConfirmViewSet, basename='reset-confirm')
+profile_image_router.register(r'profile-image', PhotoViewSet, basename='profile-image')
+
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),  # 회원가입
@@ -51,7 +54,7 @@ urlpatterns = [
 
     path('search/', RetrieveUserByEmailView.as_view(), name='search'),  # 이메일로 사용자 검색
 
-    path('users/me/profile-image/', ProfilePhotoView.as_view(), name='profile_photo'),
+    path('users/me/',include(profile_image_router.urls)),
 
 
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

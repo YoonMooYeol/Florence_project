@@ -7,6 +7,7 @@ from datetime import datetime
 
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, viewsets, permissions
+from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
@@ -16,9 +17,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.decorators import action
 
 from django.contrib.auth.hashers import get_random_string
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, JsonResponse
 from django.contrib.auth import authenticate
 from django.conf import settings
 from django.core.mail import get_connection, EmailMultiAlternatives
@@ -1086,47 +1088,51 @@ class RetrieveUserByEmailView(GenericAPIView):
             return Response({"detail": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
 
 
-class ProfilePhotoView(APIView):
-    def get(self, request, user_id=None):
-        """
-        특정 사용자의 프로필 사진을 조회할 수 있도록 수정.
-        user_id가 제공되지 않으면 현재 사용자의 프로필 사진을 반환.
-        """
-        if user_id:
-            user = get_object_or_404(User, id=user_id)
-            photo = get_object_or_404(Photo, user=user)
-        else:
-            photo = get_object_or_404(Photo, user=request.user)
+class PhotoViewSet(viewsets.ModelViewSet):
+    serializer_class = PhotoSerializer
+    lookup_field = 'id'
 
-        serializer = PhotoSerializer(photo)
-        return Response(serializer.data)
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
-    def post(self, request):
-        """ 현재 사용자에게 프로필 사진이 없을 경우에만 등록 가능 """
-        if Photo.objects.filter(user=request.user).exists():
-            return Response({"detail": "이미 등록된 사진이 있습니다."}, status=status.HTTP_400_BAD_REQUEST)
+    def get_queryset(self):
+        return Photo.objects.all()
 
-        serializer = PhotoSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(user=request.user)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def perform_create(self, serializer):
+        if Photo.objects.filter(user=self.request.user).exists():
+            raise PermissionDenied("이미 프로필 사진이 존재합니다.")
 
-    def put(self, request):
-        """ 현재 사용자의 프로필 사진을 수정 """
-        photo = get_object_or_404(Photo, user=request.user)
-        serializer = PhotoSerializer(photo, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save(user=self.request.user)
 
-    def delete(self, request):
-        """ 현재 사용자의 프로필 사진을 삭제 """
-        photo = get_object_or_404(Photo, user=request.user)
-        photo.delete()
-        return Response({"detail": "프로필 사진이 삭제되었습니다."}, status=status.HTTP_204_NO_CONTENT)
+    def perform_update(self, serializer):
+        photo = self.get_object()
 
+        if not photo.image:
+            raise PermissionDenied("등록된 프로필 사진이 없어서 수정할 수 없습니다.")
+
+        if photo.user != self.request.user:
+            raise PermissionDenied("자신의 사진만 수정할 수 있습니다.")
+
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.user != self.request.user:
+            raise PermissionDenied("자신의 사진만 삭제할 수 있습니다.")
+        instance.delete()
+
+    def retrieve(self, request, *args, **kwargs):
+        try:
+            photo = Photo.objects.get(user=request.user)
+        except Photo.DoesNotExist:
+            return JsonResponse({"message": "No photo found."}, status=404)
+
+        return JsonResponse({
+            "id": photo.id,
+            "image_url": photo.image.url if photo.image else None,
+            "image_exists": bool(photo.image)
+        })
 
 
 
