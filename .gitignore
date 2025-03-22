@@ -11,9 +11,27 @@ __pycache__/
 /data/
 /data/*
 0*.py
+/nginx/
+/nginx/*
+/flatform/
+/flatform/*
+/flatform/media/
+/flatform/media/*
+/flatform/static/
+/flatform/static/*
+.elasticbeanstalk/
+.elasticbeanstalk/*
+.ebextensions/
+.ebextensions/*
 
-# Elastic Beanstalk
-
+# 사용자가 요청한 추가 파일
+docker-compose.yml
+.dockerignore
+Dockerfile
+entrypoint.sh
+.cursor/
+/static/
+/media/
 
 # Distribution / packaging
 .Python
@@ -171,8 +189,6 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
-
-
 
 # PyPI configuration file
 .pypirc
