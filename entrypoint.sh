@@ -15,6 +15,9 @@ fi
 # 서비스 종류별 커맨드
 case "$SERVICE_TYPE" in
     "web")
+        echo "Running manage.py makemigrations..."
+        python manage.py makemigrations
+
         echo "Running migrate..."
         python manage.py migrate
 

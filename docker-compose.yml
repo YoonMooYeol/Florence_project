@@ -111,7 +111,7 @@ services:
     build: .
     # EB ECR 리포지토리를 사용한다면 build 후 push된 이미지를 pull 할 수도 있지만,
     # 여기서는 build: . 형태로 Dockerfile 사용
-    image: 954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/yoonmooyeol/florence:latest
+    image: 954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/simple-docker-service-0ace5acaf2a1
     # command는 entrypoint.sh에서 SERVICE_TYPE=web일 때 gunicorn을 실행하므로 생략
     volumes:
       - static_volume:/app/static
@@ -161,7 +161,7 @@ services:
 
   celery-worker:
     build: .
-    image: 954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/yoonmooyeol/florence:latest
+    image: 954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/simple-docker-service-0ace5acaf2a1
     # command는 entrypoint.sh에서 SERVICE_TYPE=celery-worker일 때 지정
     volumes:
       - .:/app
@@ -183,7 +183,7 @@ services:
 
   celery-beat:
     build: .
-    image: 954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/yoonmooyeol/florence:latest
+    image: 954976297775.dkr.ecr.ap-northeast-2.amazonaws.com/simple-docker-service-0ace5acaf2a1
     # command는 entrypoint.sh에서 SERVICE_TYPE=celery-beat일 때 지정
     volumes:
       - .:/app
