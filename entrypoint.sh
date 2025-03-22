@@ -9,10 +9,7 @@ if [ "$DATABASE" = "postgres" ]; then
     echo "PostgreSQL 서버 준비 완료"
 fi
 
-# (마이그레이션, collectstatic은 EB .ebextensions에서 처리 가능)
-# 또는 여기에서 해도 되지만 EB의 leader_only 컨테이너에서 처리할 때는 주의.
-
-# 서비스 종류별 커맨드
+# 서비스 종류별 커맨드 (web 서비스에서만 마이그레이션 및 collectstatic 실행)
 case "$SERVICE_TYPE" in
     "web")
         echo "Running manage.py makemigrations..."
@@ -32,9 +29,6 @@ case "$SERVICE_TYPE" in
         exec celery -A config worker -l info
         ;;
     "celery-beat")
-        echo "Running migrate for django_celery_beat..."
-        python manage.py migrate django_celery_beat
-        
         echo "Starting Celery Beat..."
         exec celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
         ;;
