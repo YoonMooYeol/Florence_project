@@ -41,7 +41,7 @@ class EventFilter(filters.FilterSet):
     
     class Meta:
         model = Event
-        fields = ['event_day', 'event_type', 'pregnancy', 'start_date', 'end_date']
+        fields = ['event_day', 'event_type', 'start_date', 'end_date']
 
 class EventViewSet(viewsets.ModelViewSet):
     """
@@ -64,10 +64,8 @@ class EventViewSet(viewsets.ModelViewSet):
         
         logger.info(f"Filtering events with start_date: {start_date}, end_date: {end_date}, event_day: {event_day}")
         
-        # 사용자의 임신 정보에 해당하는 일정만 조회
-        queryset = Event.objects.filter(
-            pregnancy__user=self.request.user
-        )
+        # 사용자의 일정만 조회 - 이 부분이 누락되어 queryset이 정의되지 않았음
+        queryset = Event.objects.filter(user=self.request.user)
         
         # 특정 날짜 필터링 (일별 조회)
         if event_day:
@@ -90,7 +88,8 @@ class EventViewSet(viewsets.ModelViewSet):
         return EventSerializer
 
     def perform_create(self, serializer):
-        event = serializer.save()
+        # 사용자 정보 자동 설정
+        event = serializer.save(user=self.request.user)
         
         # 반복 일정인 경우 추가 일정 생성
         if event.is_recurring and event.recurrence_pattern:
@@ -103,10 +102,11 @@ class EventViewSet(viewsets.ModelViewSet):
         
         # 기본 일정 정보 (원본 복사용)
         base_data = {
-            'pregnancy': event.pregnancy,
+            'user': event.user,  # pregnancy 대신 user 사용
             'title': event.title,
             'description': event.description,
-            'event_time': event.event_time,
+            'start_time': event.start_time,
+            'end_time': event.end_time,
             'event_type': event.event_type,
             'is_recurring': False,  # 복제된 일정은 반복 설정 안함
             'recurrence_pattern': None,
