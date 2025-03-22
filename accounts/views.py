@@ -5,6 +5,7 @@ import random
 import re
 from datetime import datetime
 
+from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, viewsets, permissions
 from rest_framework.exceptions import PermissionDenied, NotFound
@@ -25,6 +26,7 @@ from django.contrib.auth import authenticate
 from django.conf import settings
 from django.core.mail import get_connection, EmailMultiAlternatives
 
+from . import serializers
 from .serializers import (
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
     PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer,
@@ -1101,19 +1103,25 @@ class PhotoViewSet(viewsets.ModelViewSet):
         return Photo.objects.all()
 
     def perform_create(self, serializer):
-        if Photo.objects.filter(user=self.request.user).exists():
-            raise PermissionDenied("이미 프로필 사진이 존재합니다.")
+        if not self.request.user.is_authenticated:
+            raise PermissionDenied("로그인이 필요합니다.")
+
+        # 요청에서 파일이 제대로 넘어오는지 확인
+        image_file = self.request.FILES.get("image", None)
+        if not image_file:
+            raise serializers.ValidationError({"image": "이미지가 제출되지 않았습니다."})
+
+        # 기존 프로필 사진 삭제
+        Photo.objects.filter(user=self.request.user).delete()
+
+        # 새로운 사진 저장
+        serializer.save(user=self.request.user, image=image_file)
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_authenticated:
+            raise PermissionDenied("로그인이 필요합니다.")
 
         serializer.save(user=self.request.user)
-
-    def perform_update(self, serializer):
-        photo = self.get_object()
-
-        if not photo.image:
-            raise PermissionDenied("등록된 프로필 사진이 없어서 수정할 수 없습니다.")
-
-        if photo.user != self.request.user:
-            raise PermissionDenied("자신의 사진만 수정할 수 있습니다.")
 
         serializer.save()
 
@@ -1133,6 +1141,24 @@ class PhotoViewSet(viewsets.ModelViewSet):
             "image_url": photo.image.url if photo.image else None,
             "image_exists": bool(photo.image)
         })
+
+class PhotoUploadView(APIView):
+    parser_classes = (MultiPartParser, FormParser)
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        image_file = request.FILES.get("image", None)
+
+        if not image_file:
+            return Response({"error": "이미지가 제출되지 않았습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 기존 사진 삭제
+        Photo.objects.filter(user=request.user).delete()
+
+        # 새로운 사진 저장
+        photo = Photo.objects.create(user=request.user, image=image_file)
+
+        return Response({"message": "파일 업로드 성공!", "image_url": photo.image.url}, status=status.HTTP_201_CREATED)
 
 
 
