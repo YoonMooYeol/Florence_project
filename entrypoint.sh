@@ -3,7 +3,14 @@
 # PostgreSQL 서버 대기
 if [ "$DATABASE" = "postgres" ]; then
     echo "PostgreSQL 서버 대기 중..."
-    while ! nc -z $DB_HOST $DB_PORT; do
+    
+    # DB_HOST와 RDS_HOSTNAME 둘 다 고려
+    DB_HOST_VAR=${RDS_HOSTNAME:-$DB_HOST}
+    DB_PORT_VAR=${RDS_PORT:-$DB_PORT}
+    
+    echo "DB 호스트: $DB_HOST_VAR, DB 포트: $DB_PORT_VAR"
+    
+    while ! nc -z $DB_HOST_VAR $DB_PORT_VAR; do
       sleep 0.1
     done
     echo "PostgreSQL 서버 준비 완료"
