@@ -5,12 +5,12 @@ from django.contrib.auth.password_validation import validate_password
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True)
-    profile_photo = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = ['user_id', 'username', 'name', 'email', 'phone_number', 'password', 'password_confirm',
-                  'gender', 'is_pregnant', 'address', 'profile_photo'
+                  'gender', 'is_pregnant', 'address', 'image'
                 ]
         read_only_fields = ['user_id']
     
@@ -68,7 +68,7 @@ class UserSerializer(serializers.ModelSerializer):
 
         return user
 
-    def get_profile_photo(self, obj):
+    def get_image(self, obj):
         photo = Photo.objects.filter(user=obj).first()
         if photo and photo.image:
             request = self.context.get('request')
@@ -103,10 +103,16 @@ class PregnancySerializer(serializers.ModelSerializer):
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     """사용자 정보 수정용 시리얼라이저"""
+    image = serializers.ImageField(
+        use_url=True,
+        required=False,   # 필수 입력이 아니도록 설정
+        allow_null=True    # null 값도 허용
+    )
+
     class Meta:
         model = User
-        fields = ('username', 'name', 'email', 'phone_number', 'gender', 'address', 'is_pregnant', 'image')  # 실제 모델에 있는 필드들만 포함
-        read_only_fields = ('user_id', 'email')  # 수정 불가능한 필드. user_id는 자동으로 생성되므로 수정 불가능
+        fields = ('username', 'name', 'email', 'phone_number', 'gender', 'address', 'is_pregnant', 'image')
+        read_only_fields = ('email',)
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -257,18 +263,42 @@ class FollowUserSerializer(serializers.ModelSerializer):
 
 
 class PhotoSerializer(serializers.ModelSerializer):
-    image = serializers.ImageField(use_url=True)
+    image = serializers.ImageField(
+        use_url=True, required=False, allow_null=True
+    )  # 선택 입력 가능 + null 허용
 
     class Meta:
         model = Photo
         fields = ['id', 'user', 'image', 'created_at', 'updated_at']
         read_only_fields = ['user']
 
-        def create(self, validated_data):
-            request = self.context.get('request')
-            validated_data['user'] = request.user  # 요청한 사용자를 user로 저장
-            return super().create(validated_data)
+    def create(self, validated_data):
+        """새 프로필 사진이 업로드되면 기존 사진을 삭제한 후 저장"""
+        request = self.context.get('request')
+        user = request.user
 
+        # 기존 프로필 사진 삭제
+        old_photo = Photo.objects.filter(user=user).first()
+        if old_photo:
+            if old_photo.image:
+                old_photo.image.delete(save=False)  # 기존 파일 삭제
+            old_photo.delete()
+
+        # 새로운 프로필 사진 저장
+        validated_data['user'] = user
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """프로필 사진 업데이트 시 기존 사진 삭제"""
+        new_image = validated_data.get('image', None)
+
+        if new_image:  # 새 이미지가 업로드된 경우만 처리
+            if instance.image:
+                instance.image.delete(save=False)  # 기존 이미지 삭제
+        elif new_image is None:
+            validated_data.pop('image', None)  # 새 이미지가 없으면 'image' 필드 제거 (기존 이미지 유지)
+
+        return super().update(instance, validated_data)
 
 
 

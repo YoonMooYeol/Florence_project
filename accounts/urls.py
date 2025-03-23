@@ -20,7 +20,7 @@ pregnancy_router.register(r'pregnancies', PregnancyViewSet, basename='pregnancy'
 router.register(r'reset_code', PasswordResetViewSet, basename='reset-send-code')
 router.register(r'check_code', PasswordResetCheckViewSet, basename='reset-check-code')
 router.register(r'confirm_code', PasswordResetConfirmViewSet, basename='reset-confirm')
-profile_image_router.register(r'profile-image', PhotoViewSet, basename='profile-image')
+profile_image_router.register(r'profile-image', PhotoViewSet, basename='photo')
 
 
 urlpatterns = [

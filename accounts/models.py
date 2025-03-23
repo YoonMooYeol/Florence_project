@@ -166,13 +166,33 @@ class Follow(models.Model):
         return f"{self.follower} -> {self.following}"
 
 def user_photo_path(instance, filename):
-    return f'users/{instance.pk}/photos/{filename}'
+    """사용자별로 프로필 사진을 저장하는 경로 설정"""
+    return f'users/{instance.user_id}/photos/{filename}'
 
 class Photo(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="photo")
     image = models.ImageField(upload_to=user_photo_path, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        """기존 프로필 사진이 존재하면 삭제 후 새로운 사진 저장"""
+        if self.pk:  # 기존 사진이 존재하는 경우 삭제
+            try:
+                old_photo = Photo.objects.get(pk=self.pk)
+                if old_photo.image and old_photo.image != self.image:
+                    if os.path.isfile(old_photo.image.path):
+                        os.remove(old_photo.image.path)
+            except Photo.DoesNotExist:
+                pass
+
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """객체가 삭제될 때 실제 파일도 삭제"""
+        if self.image and os.path.isfile(self.image.path):
+            os.remove(self.image.path)
+        super().delete(*args, **kwargs)
 
     def __str__(self):
         return f"{self.user.username}'s photo"
