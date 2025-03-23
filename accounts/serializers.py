@@ -5,12 +5,12 @@ from django.contrib.auth.password_validation import validate_password
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True)
-    profile_photo = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = ['user_id', 'username', 'name', 'email', 'phone_number', 'password', 'password_confirm',
-                  'gender', 'is_pregnant', 'address', 'profile_photo'
+                  'gender', 'is_pregnant', 'address', 'image'
                 ]
         read_only_fields = ['user_id']
     
@@ -68,7 +68,7 @@ class UserSerializer(serializers.ModelSerializer):
 
         return user
 
-    def get_profile_photo(self, obj):
+    def get_image(self, obj):
         photo = Photo.objects.filter(user=obj).first()
         if photo and photo.image:
             request = self.context.get('request')
