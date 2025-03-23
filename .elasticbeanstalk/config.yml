@@ -1,13 +1,17 @@
 branch-defaults:
   main:
-    environment: florence-control
+    environment: Nooridal-env-3
     group_suffix: null
+environment-defaults:
+  Nooridal-env-3:
+    branch: null
+    repository: null
 global:
-  application_name: florence-king
+  application_name: nooridal
   branch: null
   default_ec2_keyname: aws-eb
-  default_platform: Docker
-  default_region: us-east-1
+  default_platform: Docker running on 64bit Amazon Linux 2
+  default_region: ap-northeast-2
   include_git_submodules: true
   instance_profile: null
   platform_name: null
