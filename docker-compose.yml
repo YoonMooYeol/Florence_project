@@ -106,6 +106,8 @@
 # EB에서 version에 대해 "obsolete" 경고가 나오는 경우는 아예 제거하거나, 그냥 둬도 동작 자체에는 문제가 없습니다.
 # 여기서는 편의상 제거하거나, version: "3.8"으로 표기만 둡니다.
 
+version: '3.8'
+
 services:
   web:
     build: .
@@ -118,45 +120,19 @@ services:
       - media_volume:/app/media
     environment:
       SECRET_KEY: ${SECRET_KEY}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
       DEBUG: "0"
       DATABASE: "postgres"
       DB_ENGINE: "django.db.backends.postgresql"
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      GOOGLE_KEY: ${GOOGLE_KEY}
-      VECTOR_STORE_ID: ${VECTOR_STORE_ID}
-      DEEPL_API_KEY: ${DEEPL_API_KEY}
-      NAVER_PASSWORD: ${NAVER_PASSWORD}
-      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY}
-      GMAIL_PASSWORD: ${GMAIL_PASSWORD}
-      PRODUCTION: ${PRODUCTION}
-      DJANGO_ENV: ${DJANGO_ENV}
-      KAKAO_USER: ${KAKAO_USER}
-      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      TAVILY_API_KEY: ${TAVILY_API_KEY}
-      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID}
-      KAKAO_PASSWORD: ${KAKAO_PASSWORD}
-      REST_KAKAO_API: ${REST_KAKAO_API}
-      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE}
-      JAVASCRIPT_KAKAO_API: ${JAVASCRIPT_KAKAO_API}
-      RDS_HOSTNAME: ${RDS_HOSTNAME}
-      RDS_PORT: ${RDS_PORT}
-      RDS_DB_NAME: ${RDS_DB_NAME}
-      RDS_USERNAME: ${RDS_USERNAME}
-      RDS_PASSWORD: ${RDS_PASSWORD}
+      DB_HOST: "db"
+      DB_PORT: "5432"
       SERVICE_TYPE: "web"
     depends_on:
       - db
       - redis
     restart: always
-    ports:
-      - "8000:8000"
 
   db:
     image: postgres:15
@@ -167,14 +143,10 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     restart: always
-    ports:
-      - "5432:5432"
 
   redis:
     image: redis:7-alpine
     restart: always
-    ports:
-      - "6379:6379"
 
   nginx:
     image: nginx:latest
@@ -203,14 +175,13 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
+      DB_HOST: "db"
+      DB_PORT: "5432"
       SERVICE_TYPE: "celery-worker"
     depends_on:
       - db
       - redis
     restart: always
-    
 
   celery-beat:
     build: .
@@ -226,8 +197,8 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
+      DB_HOST: "db"
+      DB_PORT: "5432"
       SERVICE_TYPE: "celery-beat"
     depends_on:
       - db

@@ -1,17 +1,13 @@
 branch-defaults:
-  develop_6:
-    environment: null
-  develop_9:
-    environment: Nooridal-env-6
   main:
-    environment: nooridal-env
+    environment: florence-control
     group_suffix: null
 global:
-  application_name: nooridal
+  application_name: florence-king
   branch: null
   default_ec2_keyname: aws-eb
   default_platform: Docker
-  default_region: ap-northeast-2
+  default_region: us-east-1
   include_git_submodules: true
   instance_profile: null
   platform_name: null
