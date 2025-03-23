@@ -264,6 +264,11 @@ class PhotoSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'image', 'created_at', 'updated_at']
         read_only_fields = ['user']
 
+        def create(self, validated_data):
+            request = self.context.get('request')
+            validated_data['user'] = request.user  # 요청한 사용자를 user로 저장
+            return super().create(validated_data)
+
 
 
 
