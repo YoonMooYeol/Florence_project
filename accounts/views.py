@@ -5,6 +5,7 @@ import random
 import re
 from datetime import datetime
 
+from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, viewsets, permissions
 from rest_framework.exceptions import PermissionDenied, NotFound
@@ -1104,32 +1105,61 @@ class PhotoViewSet(viewsets.ModelViewSet):
         return Photo.objects.all()
 
     def perform_create(self, serializer):
-        if not self.request.user.is_authenticated:
-            raise PermissionDenied("로그인이 필요합니다.")
+        if Photo.objects.filter(user=self.request.user).exists():
+            raise PermissionDenied("이미 프로필 사진이 존재합니다.")
 
-        # 요청에서 파일이 제대로 넘어오는지 확인
-        image_file = self.request.FILES.get("image", None)
-        if not image_file:
-            raise serializers.ValidationError({"image": "이미지가 제출되지 않았습니다."})
+        try:
+            serializer.save(user=self.request.user)
+        except Exception as e:
+            raise ValidationError(
+                {"error": "프로필 사진 등록 중 오류가 발생했습니다.", "details": str(e)}
+            )
 
-        # 기존 프로필 사진 삭제
-        Photo.objects.filter(user=self.request.user).delete()
+    def perform_update(self, serializer):
+        """사진을 수정하면 기존 파일을 삭제 후 새 파일로 대체"""
+        instance = self.get_object()  # 기존 객체 가져오기
+        if 'image' in self.request.data:
+            if instance.image:
+                instance.image.delete(save=False)  # 기존 파일 삭제
+        serializer.save()  # 새로운 데이터 저장
 
-        # 새로운 사진 저장
-        serializer.save(user=self.request.user, image=image_file)
-
-    def perform_create(self, serializer):
-        if not self.request.user.is_authenticated:
-            raise PermissionDenied("로그인이 필요합니다.")
-
-        serializer.save(user=self.request.user)
-
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        if instance.user != self.request.user:
+    def get_object(self):
+        """사용자 본인의 사진만 접근 가능하도록 제한"""
+        obj = super().get_object()
+        if obj.user != self.request.user:
             raise PermissionDenied("자신의 사진만 삭제할 수 있습니다.")
-        instance.delete()
+        return obj
+
+    def destroy(self, request, *args, **kwargs):
+        """DELETE 요청을 처리하는 메서드 (본인 소유 사진만 삭제 가능)"""
+        instance = self.get_object()
+
+        # 본인이 소유한 사진인지 확인
+        if instance.image!= request.user:
+            return Response(
+                {"detail": "권한이 없습니다."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            # 저장소에서 이미지 삭제
+            if instance.image:
+                instance.image.delete(save=False)
+
+            instance.delete()  # 기본 삭제 수행
+            logger.info(f"사진 삭제 완료: user={request.user.id}, photo_id={instance.id}")
+
+            return Response(
+                {"detail": "사진이 삭제되었습니다."},
+                status=status.HTTP_204_NO_CONTENT
+            )
+
+        except Exception as e:
+            logger.error(f"사진 삭제 중 오류 발생: {e}")
+            return Response(
+                {"detail": "사진 삭제 중 오류가 발생했습니다."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def retrieve(self, request, *args, **kwargs):
         try:

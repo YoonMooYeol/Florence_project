@@ -173,7 +173,7 @@ DATABASES = {
         'NAME': os.getenv('DB_NAME', 'florence_db'),
         'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'HOST': os.getenv('localhost'), #'DB_HOST'
         'PORT': os.getenv('DB_PORT', 5432),
     }
 }
