@@ -23,6 +23,8 @@ __pycache__/
 .elasticbeanstalk/*
 .ebextensions/
 .ebextensions/*
+.ebextensions/*.config
+
 
 # 사용자가 요청한 추가 파일
 docker-compose.yml
