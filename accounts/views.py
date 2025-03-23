@@ -1089,31 +1089,40 @@ class RetrieveUserByEmailView(GenericAPIView):
 
 
 class PhotoViewSet(viewsets.ModelViewSet):
+    http_method_names = ['get', 'post', 'put', 'patch', 'delete']
     serializer_class = PhotoSerializer
     lookup_field = 'id'
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [AllowAny()]
+        elif self.action in ['destroy', 'update', 'partial_update']:
+            return [IsAuthenticated()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
         return Photo.objects.all()
 
     def perform_create(self, serializer):
-        if Photo.objects.filter(user=self.request.user).exists():
-            raise PermissionDenied("이미 프로필 사진이 존재합니다.")
+        if not self.request.user.is_authenticated:
+            raise PermissionDenied("로그인이 필요합니다.")
+
+        # 요청에서 파일이 제대로 넘어오는지 확인
+        image_file = self.request.FILES.get("image", None)
+        if not image_file:
+            raise serializers.ValidationError({"image": "이미지가 제출되지 않았습니다."})
+
+        # 기존 프로필 사진 삭제
+        Photo.objects.filter(user=self.request.user).delete()
+
+        # 새로운 사진 저장
+        serializer.save(user=self.request.user, image=image_file)
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_authenticated:
+            raise PermissionDenied("로그인이 필요합니다.")
 
         serializer.save(user=self.request.user)
-
-    def perform_update(self, serializer):
-        photo = self.get_object()
-
-        if not photo.image:
-            raise PermissionDenied("등록된 프로필 사진이 없어서 수정할 수 없습니다.")
-
-        if photo.user != self.request.user:
-            raise PermissionDenied("자신의 사진만 수정할 수 있습니다.")
 
         serializer.save()
 
