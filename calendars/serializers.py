@@ -6,13 +6,13 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = '__all__'
-        read_only_fields = ['event_id', 'created_at', 'updated_at']
+        read_only_fields = ['event_id', 'created_at', 'updated_at', 'user']
 
 class EventDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = '__all__'
-        read_only_fields = ['event_id', 'created_at', 'updated_at']
+        read_only_fields = ['event_id', 'created_at', 'updated_at', 'user']
 
 class DailyConversationSummarySerializer(serializers.ModelSerializer):
     class Meta:
