@@ -493,24 +493,13 @@ class KakaoLoginCallbackView(APIView):
         refresh.access_token['is_pregnant'] = user.is_pregnant
 
         # 환경에 따라 적절한 프론트엔드 콜백 URL 사용
-        # 환경 변수로 명시적으로 FE_ENV를 설정하거나 DJANGO_ENV를 확인
-        # FE_ENV=local 또는 FE_ENV=production으로 설정 가능
-        fe_env = os.environ.get('FE_ENV', 'local')  # 기본값은 'local'
-        django_env = os.environ.get('DJANGO_ENV', 'development')  # 기본값은 'development'
+        django_env = os.environ.get('DJANGO_ENV', 'development')
+        is_development = (django_env == 'development')
 
-        # 명시적인 FE_ENV 설정이 없으면 DJANGO_ENV를 기준으로 판단
-        is_production = fe_env == 'production' or django_env == 'production'
-
-        # request.get_host()를 출력하여 디버깅에 도움이 되도록 함
-        host = request.get_host()
-        print(f"Current host: {host}, Environment: {'production' if is_production else 'local'}")
-
-        if is_production:
-            frontend_redirect_uri = "https://florence-project-fe.vercel.app/kakao/callback"
-        else:
+        if is_development:
             frontend_redirect_uri = "http://localhost:5173/kakao/callback"
-
-        print(f"Redirecting to: {frontend_redirect_uri}")
+        else:
+            frontend_redirect_uri = "https://florence-project-fe.vercel.app/kakao/callback"
 
         # URL 파라미터로 토큰 전달
         params = {
@@ -672,22 +661,13 @@ class NaverLoginCallbackView(APIView):
             print(f"✅ JWT 토큰이 생성되었습니다.")
 
             # 환경에 따라 적절한 프론트엔드 콜백 URL 사용
-            # 환경 변수로 명시적으로 FE_ENV를 설정하거나 DJANGO_ENV를 확인
-            # FE_ENV=local 또는 FE_ENV=production으로 설정 가능
-            fe_env = os.environ.get('FE_ENV', 'local')  # 기본값은 'local'
-            django_env = os.environ.get('DJANGO_ENV', 'development')  # 기본값은 'development'
+            django_env = os.environ.get('DJANGO_ENV', 'development')
+            is_development = (django_env == 'development')
 
-            # 명시적인 FE_ENV 설정이 없으면 DJANGO_ENV를 기준으로 판단
-            is_production = fe_env == 'production' or django_env == 'production'
-
-            # request.get_host()를 출력하여 디버깅에 도움이 되도록 함
-            host = request.get_host()
-            print(f"Current host: {host}, Environment: {'production' if is_production else 'local'}")
-
-            if is_production:
-                frontend_redirect_uri = "https://florence-project-fe.vercel.app/naver/callback"
-            else:
+            if is_development:
                 frontend_redirect_uri = "http://localhost:5173/naver/callback"
+            else:
+                frontend_redirect_uri = "https://florence-project-fe.vercel.app/naver/callback"
 
             print(f"리디렉션 URL: {frontend_redirect_uri}")
 
@@ -878,18 +858,11 @@ class GoogleLoginCallbackView(APIView):
             print(f"✅ JWT 토큰이 생성되었습니다.")
 
             # 환경에 따라 적절한 프론트엔드 콜백 URL 사용
-            fe_env = os.environ.get('FE_ENV', 'local')  # 기본값은 'local'
-            django_env = os.environ.get('DJANGO_ENV', 'development')  # 기본값은 'development'
+            django_env = os.environ.get('DJANGO_ENV', 'development')
+            is_development = (django_env == 'development')
 
-            # 명시적인 FE_ENV 설정이 없으면 DJANGO_ENV를 기준으로 판단
-            is_production = fe_env == 'production' or django_env == 'production'
-
-            # request.get_host()를 출력하여 디버깅에 도움이 되도록 함
-            host = request.get_host()
-            print(f"Current host: {host}, Environment: {'production' if is_production else 'local'}")
-
-            if is_production:
-                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
+            if is_development:
+                frontend_redirect_uri = "http://localhost:5173/google/callback"
             else:
                 frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
 
@@ -901,7 +874,7 @@ class GoogleLoginCallbackView(APIView):
                 'user_id': str(user.user_id),
                 'name': user.name,
                 'is_pregnant': str(user.is_pregnant).lower(),  # 불리언을 문자열로 변환
-                'debug_info': f"host_{host}_time_{str(datetime.now())}"  # 디버깅용 추가 정보
+                'debug_info': f"host_{request.get_host()}_time_{str(datetime.now())}"  # 디버깅용 추가 정보
             }
 
             # 파라미터를 URL에 추가

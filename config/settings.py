@@ -27,6 +27,7 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 LLM_MODEL = 'gpt-4o-mini'  # 또는 'gpt-4'
 
 SECRET_KEY = os.getenv('SECRET_KEY')
+django_env = os.environ.get('DJANGO_ENV')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -98,8 +99,13 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 ]
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Vue 개발 서버
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "https://florence-project-fe.vercel.app",
 ]
+
 
 
 REST_FRAMEWORK = {
@@ -165,23 +171,31 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-import os
+
+
+
 
 DATABASES = {
     'default': {
-        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.postgresql'),
-        # 'NAME' : 'florence_db',
-        'NAME': os.getenv('DB_NAME', 'florence_db'),
-        # 'USER' : 'postgres',
-        'USER': os.getenv('DB_USER', 'postgres'),
-        # 'PASSWORD': 'postgres',
-        'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
-        # 'HOST': 'localhost',
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        # 'PORT': 5432,
-        'PORT': os.getenv('DB_PORT', 5432),
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'florence_db',
+        'USER': 'postgres',
+        'PASSWORD': 'postgres',
+        'HOST': 'localhost',
+        'PORT': 5432,
     }
 }
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': os.getenv('DB_NAME'),
+#         'USER': os.getenv('DB_USER'),
+#         'PASSWORD': os.getenv('DB_PASSWORD'),
+#         'HOST': os.getenv('DB_HOST'),
+#         'PORT': os.getenv('DB_PORT'),
+#     }
+# }
+
 
 
 # Password validation
