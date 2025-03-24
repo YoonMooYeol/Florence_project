@@ -472,7 +472,8 @@ class KakaoLoginCallbackView(APIView):
                 username=username,
                 email=email,
                 name=name,
-                password=temp_password  # 실제로는 사용되지 않음
+                password=temp_password,  # 실제로는 사용되지 않음
+                phone_number=None
             )
 
         # JWT 토큰 생성
@@ -637,7 +638,8 @@ class NaverLoginCallbackView(APIView):
                     username=username,
                     email=email,
                     name=name,
-                    password=temp_password  # 실제로는 사용되지 않음
+                    password=temp_password,  # 실제로는 사용되지 않음
+                    phone_number=None
                 )
                 print(f"✅ 새 사용자가 생성되었습니다: {user.email}, {user.name}")
 
@@ -834,7 +836,8 @@ class GoogleLoginCallbackView(APIView):
                     username=username,
                     email=email,
                     name=name,
-                    password=temp_password  # 실제로는 사용되지 않음
+                    password=temp_password,  # 실제로는 사용되지 않음
+                    phone_number=None
                 )
                 print(f"✅ 새 사용자가 생성되었습니다: {user.email}, {user.name}")
 

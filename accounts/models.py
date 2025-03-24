@@ -41,6 +41,7 @@ class User(AbstractUser):
         max_length=15, 
         unique=True,
         blank=True,
+        null=True,
         verbose_name='전화번호',
         error_messages={
             'unique': "이미 등록된 전화번호입니다.",
