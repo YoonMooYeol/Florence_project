@@ -174,27 +174,28 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 
 
-
-DATABASES = {
-    'default': {
+if django_env == 'development':
+    DATABASES = {
+        'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'florence_db',
         'USER': 'postgres',
         'PASSWORD': 'postgres',
         'HOST': 'localhost',
-        'PORT': 5432,
+            'PORT': 5432,
+        }
     }
-}
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.getenv('DB_NAME'),
-#         'USER': os.getenv('DB_USER'),
-#         'PASSWORD': os.getenv('DB_PASSWORD'),
-#         'HOST': os.getenv('DB_HOST'),
-#         'PORT': os.getenv('DB_PORT'),
-#     }
-# }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME'),
+            'USER': os.getenv('DB_USER'),
+            'PASSWORD': os.getenv('DB_PASSWORD'),
+            'HOST': os.getenv('DB_HOST'),
+            'PORT': os.getenv('DB_PORT'),
+        }
+    }
 
 
 
@@ -245,7 +246,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 import os
 
 
-EMAIL_SITE = os.getenv("EMAIL_SITE", "Gmail")  # 기본값은 Gmail
+EMAIL_SITE = os.getenv("EMAIL_SERVICE")  # 기본값은 Gmail
 
 # SMTP 설정을 정의
 SMTP_CONFIG = {
@@ -253,22 +254,22 @@ SMTP_CONFIG = {
         "HOST": "smtp.gmail.com",
         "USE_TLS": True,
         "PORT": 587,
-        "HOST_USER": os.getenv('GMAIL_USER', 'your_gmail@gmail.com'),
-        "HOST_PASSWORD": os.getenv('GMAIL_PASSWORD', 'your_gmail_password')
+        "HOST_USER": os.getenv('GMAIL_USER'),
+        "HOST_PASSWORD": os.getenv('GMAIL_PASSWORD')
     },
     "NAVER": {
         "HOST": "smtp.naver.com",
         "USE_TLS": True,
         "PORT": 587,
-        "HOST_USER": os.getenv('NAVER_USER', 'NAVER_EMAIL_USER'),
-        "HOST_PASSWORD": os.getenv('NAVER_PASSWORD', 'NAVER_PASSWORD_USER')
+        "HOST_USER": os.getenv('NAVER_USER'),
+        "HOST_PASSWORD": os.getenv('NAVER_PASSWORD')
     },
     "KAKAO": {
         "HOST": "smtp.kakao.com",
         "USE_TLS": True,
         "PORT": 587,
-        "HOST_USER": os.getenv('HOST_USER'),
-        "HOST_PASSWORD": os.getenv('HOST_PASSWORD')
+        "HOST_USER": os.getenv('KAKAO_USER'),
+        "HOST_PASSWORD": os.getenv('KAKAO_PASSWORD')
     }
 }
 
