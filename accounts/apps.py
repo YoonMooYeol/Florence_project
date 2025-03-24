@@ -8,3 +8,4 @@ class AccountsConfig(AppConfig):
     def ready(self):
         import accounts.tasks  # 태스크 모듈 로드
         import accounts.signals  # 시그널 모듈 로드
+

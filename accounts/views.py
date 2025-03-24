@@ -42,6 +42,20 @@ load_dotenv()
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
+
+env = os.getenv('DJANGO_ENV')
+print(env)
+
+if env == 'development':
+    BACKEND_URL = "http://127.0.0.1:8000/"
+    FRONTEND_URL = "http://localhost:5173/"
+else:
+    BACKEND_URL = "https://nooridal.com/"
+    FRONTEND_URL = "https://florence-project-fe.vercel.app/"
+
+
+
+
 API_URL = os.getenv('PRODUCTION')
 
 class RegisterView(generics.CreateAPIView):
@@ -429,24 +443,42 @@ class KakaoLoginCallbackView(APIView):
 
         # code로 카카오 액세스 토큰 요청
         token_api_url = "https://kauth.kakao.com/oauth/token"
+        backend_redirect_uri = f"{BACKEND_URL}v1/accounts/kakao/callback"
+        
+        # 디버깅을 위한 로그 출력
+        print("\n======= 카카오 로그인 콜백 시작 =======")
+        print(f"요청 URL: {request.build_absolute_uri()}")
+        print(f"카카오 코드: {code}")
+        print(f"리다이렉트 URI: {backend_redirect_uri}")
+        print(f"REST_KAKAO_API: {os.getenv('REST_KAKAO_API')[:8]}..." if os.getenv('REST_KAKAO_API') else "API 키가 설정되지 않았습니다")
+
         data = {
             'grant_type': 'authorization_code',
-            'client_id': os.getenv('REST_KAKAO_API'),  # 카카오 developers에서 발급한 REST API 키
-            'redirect_uri': "https://nooridal.com/v1/accounts/kakao/callback",  # 디벨로퍼스에 등록된 Redirect URI와 동일
+            'client_id': os.getenv('REST_KAKAO_API'),
+            'redirect_uri': backend_redirect_uri,
             'code': code
         }
+
+        print(f"토큰 요청 데이터: {data}")
         token_response = requests.post(token_api_url, data=data)
+        print(f"토큰 응답 상태 코드: {token_response.status_code}")
+        print(f"토큰 응답 내용: {token_response.text}")
+
         token_json = token_response.json()
         if 'access_token' not in token_json:
             return Response({'error': '카카오 액세스 토큰을 받지 못했습니다.'}, status=status.HTTP_400_BAD_REQUEST)
 
         kakao_access_token = token_json['access_token']
+        print(f"카카오 액세스 토큰: {kakao_access_token[:10]}...")
 
         # 액세스 토큰으로 카카오 프로필 요청
         profile_api_url = "https://kapi.kakao.com/v2/user/me"
         headers = {
             "Authorization": f"Bearer {kakao_access_token}"
         }
+        print(f"프로필 요청 URL: {profile_api_url}")
+        print(f"프로필 요청 헤더: {headers}")
+
         profile_response = requests.post(profile_api_url, headers=headers)
         if profile_response.status_code != 200:
             return Response({'error': '카카오 사용자 정보를 가져오지 못했습니다.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -454,13 +486,13 @@ class KakaoLoginCallbackView(APIView):
         kakao_user = profile_response.json()
         kakao_account = kakao_user.get('kakao_account', {})
         email = kakao_account.get('email', None)
-
         if not email:
             return Response({'error': '카카오 이메일 정보가 없습니다.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             # 기존 사용자 찾기
             user = User.objects.get(email=email)
+            print(f"카카오 이메일: {email}")
         except User.DoesNotExist:
             # 신규 사용자 자동 생성
             username = f"kakao_{kakao_user.get('id')}"
@@ -473,9 +505,7 @@ class KakaoLoginCallbackView(APIView):
                 email=email,
                 name=name,
                 password=temp_password,  # 실제로는 사용되지 않음
-                phone_number=None
             )
-
         # JWT 토큰 생성
         refresh = RefreshToken.for_user(user)
 
@@ -493,25 +523,18 @@ class KakaoLoginCallbackView(APIView):
         refresh.access_token['email'] = user.email
         refresh.access_token['is_pregnant'] = user.is_pregnant
 
-        # 환경에 따라 적절한 프론트엔드 콜백 URL 사용
-        django_env = os.environ.get('DJANGO_ENV', 'development')
-        is_development = (django_env == 'development')
-
-        if is_development:
-            frontend_redirect_uri = "http://localhost:5173/kakao/callback"
-        else:
-            frontend_redirect_uri = "https://florence-project-fe.vercel.app/kakao/callback"
-
-        # URL 파라미터로 토큰 전달
+        # 프론트엔드 콜백 URL 하드코딩
+        frontend_redirect_uri = f"{FRONTEND_URL}kakao/callback"
+        
+        # URL 파라미터 추가 및 리다이렉션
         params = {
             'token': str(refresh.access_token),
             'refresh': str(refresh),
             'user_id': str(user.user_id),
             'name': user.name,
-            'is_pregnant': str(user.is_pregnant).lower()  # 불리언을 문자열로 변환
+            'is_pregnant': str(user.is_pregnant).lower()
         }
-
-        # 파라미터를 URL에 추가
+        
         query_string = "&".join([f"{key}={value}" for key, value in params.items()])
         redirect_url = f"{frontend_redirect_uri}?{query_string}"
 
@@ -542,6 +565,9 @@ class NaverLoginCallbackView(APIView):
             print("❌ 오류: 네이버 인증 code 또는 state가 없습니다.")
             return Response({'error': '네이버 인증 code 또는 state가 없습니다.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 환경에 따라 백엔드 콜백 URL 설정
+        backend_redirect_uri = f"{BACKEND_URL}v1/accounts/naver/callback"
+
         # code로 네이버 액세스 토큰 요청
         token_api_url = "https://nid.naver.com/oauth2.0/token"
 
@@ -561,7 +587,8 @@ class NaverLoginCallbackView(APIView):
             'client_id': naver_client_id,
             'client_secret': naver_client_secret,
             'code': code,
-            'state': state
+            'state': state,
+            'redirect_uri': backend_redirect_uri
         }
         print(f"토큰 요청 URL: {token_api_url}")
         print(f"토큰 요청 데이터: {data}")
@@ -663,22 +690,15 @@ class NaverLoginCallbackView(APIView):
             print(f"✅ JWT 토큰이 생성되었습니다.")
 
             # 환경에 따라 적절한 프론트엔드 콜백 URL 사용
-            django_env = os.environ.get('DJANGO_ENV', 'development')
-            is_development = (django_env == 'development')
-
-            if is_development:
-                frontend_redirect_uri = "http://localhost:5173/naver/callback"
-            else:
-                frontend_redirect_uri = "https://florence-project-fe.vercel.app/naver/callback"
-
-            print(f"리디렉션 URL: {frontend_redirect_uri}")
+            frontend_redirect_uri = f"{FRONTEND_URL}naver/callback"
 
             params = {
                 'token': str(refresh.access_token),
                 'refresh': str(refresh),
                 'user_id': str(user.user_id),
                 'name': user.name,
-                'is_pregnant': str(user.is_pregnant).lower()  # 불리언을 문자열로 변환
+                'is_pregnant': str(user.is_pregnant).lower(),  # 불리언을 문자열로 변환
+                'debug_info': f"host_{request.get_host()}_time_{str(datetime.now())}"  # 디버깅용 추가 정보
             }
 
             # 파라미터를 URL에 추가
@@ -696,7 +716,10 @@ class NaverLoginCallbackView(APIView):
             print(f"❌ 예외 발생: {str(e)}")
             import traceback
             print(traceback.format_exc())
-            return Response({'error': f'네이버 로그인 처리 중 오류 발생: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            # 프론트엔드로 에러 리다이렉션
+            redirect_url = f"{frontend_redirect_uri}?error=처리_중_오류_발생"
+            return HttpResponseRedirect(redirect_url)
 
 
 class GoogleLoginCallbackView(APIView):
@@ -713,6 +736,9 @@ class GoogleLoginCallbackView(APIView):
         print(f"요청 헤더: {dict(request.headers)}")
         print(f"요청 GET 파라미터: {dict(request.GET)}")
 
+        # 환경에 따라 프론트엔드 콜백 URL 설정
+        frontend_callback_url = f"{FRONTEND_URL}google/callback"
+
         # 구글에서 전달한 code 추출
         code = request.GET.get('code', None)
 
@@ -721,8 +747,7 @@ class GoogleLoginCallbackView(APIView):
         if not code:
             print("❌ 오류: 구글 인증 code가 없습니다.")
             # 프론트엔드로 에러 리다이렉션
-            frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
-            redirect_url = f"{frontend_redirect_uri}?error=인증_코드_없음"
+            redirect_url = f"{frontend_callback_url}?error=인증_코드_없음"
             return HttpResponseRedirect(redirect_url)
 
         # code로 구글 액세스 토큰 요청
@@ -738,12 +763,12 @@ class GoogleLoginCallbackView(APIView):
         if not google_client_id or not google_client_secret:
             print("❌ 오류: 구글 API 키가 설정되지 않았습니다.")
             # 프론트엔드로 에러 리다이렉션
-            frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
-            redirect_url = f"{frontend_redirect_uri}?error=API_키_설정_없음"
+            redirect_url = f"{frontend_callback_url}?error=API_키_설정_없음"
             return HttpResponseRedirect(redirect_url)
 
-        # 리디렉션 URI 설정 - 백엔드 콜백 URL
-        redirect_uri = f"https://nooridal.com/v1/accounts/google/callback"
+        # 리디렉션 URI 설정 - 백엔드 콜백 URL를 환경에 따라 동적으로 설정
+        backend_redirect_uri = f"{BACKEND_URL}v1/accounts/google/callback"
+        redirect_uri = backend_redirect_uri
 
         data = {
             'grant_type': 'authorization_code',
@@ -765,15 +790,13 @@ class GoogleLoginCallbackView(APIView):
             except Exception as json_error:
                 print(f"❌ JSON 파싱 오류: {str(json_error)}, 응답 내용: {token_response.text}")
                 # 프론트엔드로 에러 리다이렉션
-                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
-                redirect_url = f"{frontend_redirect_uri}?error=JSON_파싱_오류"
+                redirect_url = f"{frontend_callback_url}?error=JSON_파싱_오류"
                 return HttpResponseRedirect(redirect_url)
 
             if 'access_token' not in token_json:
                 print(f"❌ 오류: 구글 액세스 토큰을 받지 못했습니다. 응답: {token_json}")
                 # 프론트엔드로 에러 리다이렉션
-                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
-                redirect_url = f"{frontend_redirect_uri}?error=액세스_토큰_없음"
+                redirect_url = f"{frontend_callback_url}?error=액세스_토큰_없음"
                 return HttpResponseRedirect(redirect_url)
 
             google_access_token = token_json['access_token']
@@ -794,8 +817,7 @@ class GoogleLoginCallbackView(APIView):
             if profile_response.status_code != 200:
                 print("❌ 오류: 구글 사용자 정보를 가져오지 못했습니다.")
                 # 프론트엔드로 에러 리다이렉션
-                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
-                redirect_url = f"{frontend_redirect_uri}?error=사용자_정보_가져오기_실패"
+                redirect_url = f"{frontend_callback_url}?error=사용자_정보_가져오기_실패"
                 return HttpResponseRedirect(redirect_url)
 
             try:
@@ -803,8 +825,7 @@ class GoogleLoginCallbackView(APIView):
             except Exception as json_error:
                 print(f"❌ 프로필 JSON 파싱 오류: {str(json_error)}, 응답 내용: {profile_response.text}")
                 # 프론트엔드로 에러 리다이렉션
-                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
-                redirect_url = f"{frontend_redirect_uri}?error=프로필_JSON_파싱_오류"
+                redirect_url = f"{frontend_callback_url}?error=프로필_JSON_파싱_오류"
                 return HttpResponseRedirect(redirect_url)
 
             # 사용자 정보 추출
@@ -815,8 +836,7 @@ class GoogleLoginCallbackView(APIView):
             if not email:
                 print("❌ 오류: 구글 이메일 정보가 없습니다.")
                 # 프론트엔드로 에러 리다이렉션
-                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
-                redirect_url = f"{frontend_redirect_uri}?error=이메일_정보_없음"
+                redirect_url = f"{frontend_callback_url}?error=이메일_정보_없음"
                 return HttpResponseRedirect(redirect_url)
 
             # 사용자 생성 또는 조회
@@ -861,15 +881,7 @@ class GoogleLoginCallbackView(APIView):
             print(f"✅ JWT 토큰이 생성되었습니다.")
 
             # 환경에 따라 적절한 프론트엔드 콜백 URL 사용
-            django_env = os.environ.get('DJANGO_ENV', 'development')
-            is_development = (django_env == 'development')
-
-            if is_development:
-                frontend_redirect_uri = "http://localhost:5173/google/callback"
-            else:
-                frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
-
-            print(f"리디렉션 URL: {frontend_redirect_uri}")
+            frontend_redirect_uri = frontend_callback_url
 
             params = {
                 'token': str(refresh.access_token),
@@ -897,8 +909,7 @@ class GoogleLoginCallbackView(APIView):
             print(traceback.format_exc())
 
             # 프론트엔드로 에러 리다이렉션
-            frontend_redirect_uri = "https://florence-project-fe.vercel.app/google/callback"
-            redirect_url = f"{frontend_redirect_uri}?error=처리_중_오류_발생"
+            redirect_url = f"{frontend_callback_url}?error=처리_중_오류_발생"
             return HttpResponseRedirect(redirect_url)
 
 

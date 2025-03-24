@@ -39,9 +39,12 @@ urlpatterns = [
     path('', include(router.urls)), # 이메일 인증 및 비밀번호 재설정
 
     # 소셜 로그인 콜백 URL
-    path('kakao/callback/', KakaoLoginCallbackView.as_view(), name='kakao-callback'),
-    path('naver/callback/', NaverLoginCallbackView.as_view(), name='naver-callback'),
-    path('google/callback/', GoogleLoginCallbackView.as_view(), name='google-callback'),
+    path('kakao/callback', KakaoLoginCallbackView.as_view()),
+    path('kakao/callback/', KakaoLoginCallbackView.as_view()),
+    path('naver/callback', NaverLoginCallbackView.as_view()),
+    path('naver/callback/', NaverLoginCallbackView.as_view()),
+    path('google/callback', GoogleLoginCallbackView.as_view(), name='google-callback'),
+    path('google/callback/', GoogleLoginCallbackView.as_view()),
     path('apple/callback/', NaverLoginCallbackView.as_view(), name='apple-callback'),  # TODO: 애플 로그인 콜백 구현 필요
 
     path('send_register/', RegisterSendEmailView.as_view(), name='register-send'),
