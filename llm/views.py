@@ -183,7 +183,7 @@ class OpenAIAgentStreamView(APIView):
         """실시간 스트리밍 SSE 이벤트"""
         import json
         import asyncio
-        from concurrent.futures import ThreadPoolExecutor
+        # from concurrent.futures import ThreadPoolExecutor
         import threading
         
         # 파라미터 추출
@@ -197,8 +197,8 @@ class OpenAIAgentStreamView(APIView):
         # 시작 메시지
         yield f"data: {json.dumps({'status': 'start'})}\n\n"
         
-        # ThreadPoolExecutor를 사용한 병렬 처리
-        executor = ThreadPoolExecutor(max_workers=1)
+        # # ThreadPoolExecutor를 사용한 병렬 처리
+        # executor = ThreadPoolExecutor(max_workers=1)
         loop = asyncio.new_event_loop()
         
         # 스레드간 데이터 큐
