@@ -505,6 +505,7 @@ class KakaoLoginCallbackView(APIView):
                 email=email,
                 name=name,
                 password=temp_password,  # 실제로는 사용되지 않음
+                phone_number=None
             )
         # JWT 토큰 생성
         refresh = RefreshToken.for_user(user)
