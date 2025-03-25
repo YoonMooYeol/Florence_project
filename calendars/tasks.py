@@ -23,6 +23,7 @@ def auto_summarize_yesterday_conversations():
     # 모든 활성 사용자에 대해 요약 생성
     users = User.objects.filter(is_active=True)
     success_count = 0
+    skipped_count = 0  # 정상적으로 건너뛴 경우 카운트
     error_count = 0
     
     for user in users:
@@ -46,7 +47,16 @@ def auto_summarize_yesterday_conversations():
             if response.status_code == 201:  # HTTP_201_CREATED
                 success_count += 1
                 logger.info(f"사용자 {user.username}의 {yesterday_str} 대화 요약 생성 완료")
+            elif response.status_code == 400 and "요약이 존재합니다" in str(response.data):
+                # 이미 요약이 존재하는 경우 - 정상적인 상황
+                skipped_count += 1
+                logger.info(f"사용자 {user.username}의 {yesterday_str} 대화 요약이 이미 존재함")
+            elif response.status_code == 404 and "대화가 없습니다" in str(response.data):
+                # 대화가 없는 경우 - 정상적인 상황
+                skipped_count += 1
+                logger.info(f"사용자 {user.username}의 {yesterday_str} 대화가 없음")
             else:
+                # 실제 에러 상황만 에러로 카운트
                 error_count += 1
                 logger.warning(
                     f"사용자 {user.username}의 {yesterday_str} 대화 요약 생성 실패: "
@@ -57,7 +67,7 @@ def auto_summarize_yesterday_conversations():
             error_count += 1
             logger.error(f"사용자 {user.username}의 대화 요약 중 예외 발생: {str(e)}")
     
-    result_message = f"전날({yesterday_str}) 대화 자동 요약 완료: 성공 {success_count}건, 실패 {error_count}건"
+    result_message = f"전날({yesterday_str}) 대화 자동 요약 완료: 성공 {success_count}건, 건너뜀 {skipped_count}건, 실패 {error_count}건"
     logger.info(result_message)
     
     return result_message
