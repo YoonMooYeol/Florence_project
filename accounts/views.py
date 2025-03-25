@@ -51,7 +51,7 @@ if env == 'development':
     FRONTEND_URL = "http://localhost:5173/"
 else:
     BACKEND_URL = "https://nooridal.click/"
-    FRONTEND_URL = "https://florence-project-fe.vercel.app/"
+    FRONTEND_URL = "https://nooridal.com/"
 
 
 
