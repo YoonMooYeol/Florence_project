@@ -2,7 +2,7 @@
 
 <br>
 
-![누리달](static/florence.png "누리달")
+![누리달](static/florence_photo.png "누리달")
 
 [➡️ 누리달 홈페이지 바로가기](https://www.nooridal.com/)
 
@@ -57,8 +57,7 @@
 
 ## 기대 효과
 
->"누리달은 단순한 AI 기반 시스템이 아닌,  
-**대한민국에서 태어나는 소중한 생명을 지키는 데 기여하는 서비스**가 되고자 합니다."
+>"누리달은 단순한 AI 기반 시스템이 아닌, **대한민국에서 태어나는 소중한 생명을 지키는 데 기여하는 서비스**가 되고자 합니다."
 
 
 >- **의료 정보 접근성 개선**으로 임산부의 건강 증진
@@ -70,6 +69,7 @@
 ## 🔗 기술 스택
 
 ---
+
 - 웹 서버: Django + Gunicorn + Nginx
 - 비동기 작업: Celery + Celery Beat
 - 메시지 브로커: Redis
@@ -222,6 +222,8 @@ Florence_project/
 
 ## 인증
 
+---
+
 ### 로그인
 
 - **URL**: `/api/auth/token/`
@@ -267,6 +269,8 @@ Florence_project/
 ```
 
 ## 사용자 관리
+
+--- 
 
 ### 사용자 등록
 
@@ -315,6 +319,8 @@ Florence_project/
 ```
 
 ## AI 서비스
+
+---
 
 ### 대화 생성
 
@@ -366,13 +372,19 @@ Florence_project/
 
 ## 오류 코드
 
-- `400 Bad Request`: 잘못된 요청 형식
-- `401 Unauthorized`: 인증 실패
-- `403 Forbidden`: 권한 없음
-- `404 Not Found`: 리소스를 찾을 수 없음
-- `500 Internal Server Error`: 서버 내부 오류
+---
+
+### `400 Bad Request`: 잘못된 요청 형식
+### `401 Unauthorized`: 인증 실패
+### `403 Forbidden`: 권한 없음
+### `404 Not Found`: 리소스를 찾을 수 없음
+### `500 Internal Server Error`: 서버 내부 오류
+
+<br>
 
 ## API 사용 예시 (Vue.js)
+
+---
 
 ```javascript
 // 로그인 요청 예시
