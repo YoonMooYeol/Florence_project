@@ -37,7 +37,9 @@ django_env = os.environ.get('DJANGO_ENV')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ['*']  # 모든 호스트 허용
+ALLOWED_HOSTS = ['nooridal.com', 'www.nooridal.com']
+# 만약 www.nooridal.com도 사용한다면:
+# ALLOWED_HOSTS = ['nooridal.com', 'www.nooridal.com']
 
 
 # Application definition
@@ -92,18 +94,24 @@ MIDDLEWARE = [
 ROOT_URLCONF = "config.urls"
 
 
-CORS_ALLOW_ALL_ORIGINS = True #TODO: 모든 도메인에서 접근 가능하도록 하는 코드. 배포 후 주석처리
+# CORS_ALLOW_ALL_ORIGINS = True #TODO: 모든 도메인에서 접근 가능하도록 하는 코드. 배포 후 주석처리
+CSRF_COOKIE_SECURE = True
+SECURE_SSL_REDIRECT = True
+SESSION_COOKIE_SECURE = True
+
+# HSTS 설정 (1년 동안 HTTPS만 허용, 서브도메인 포함, 프리로드 신청)
+SECURE_HSTS_SECONDS = 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "content-type",
 ]
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "https://florence-project-fe.vercel.app",
+    "https://nooridal.com",
+    "https://www.nooridal.com",
 ]
 
 
@@ -174,28 +182,16 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 
 
-if django_env == 'development':
-    DATABASES = {
-        'default': {
+DATABASES = {
+    'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'florence_db',
-        'USER': 'postgres',
-        'PASSWORD': 'postgres',
-        'HOST': 'localhost',
-            'PORT': 5432,
-        }
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST'),
+        'PORT': os.getenv('DB_PORT'),
     }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME'),
-            'USER': os.getenv('DB_USER'),
-            'PASSWORD': os.getenv('DB_PASSWORD'),
-            'HOST': os.getenv('DB_HOST'),
-            'PORT': os.getenv('DB_PORT'),
-        }
-    }
+}
 
 
 
@@ -374,12 +370,10 @@ ACCOUNT_ADAPTER = 'accounts.adapters.CustomAccountAdapter'
 SOCIALACCOUNT_ADAPTER = 'accounts.adapters.CustomSocialAccountAdapter'
 
 # Celery 설정
-if django_env == 'development':
-    CELERY_BROKER_URL = 'redis://localhost:6379/0'
-    CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-else:
-    CELERY_BROKER_URL = 'redis://redis:6379/0'
-    CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
+
+
+CELERY_BROKER_URL = 'redis://redis:6379/0'
+CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
 
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'

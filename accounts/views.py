@@ -50,8 +50,8 @@ if env == 'development':
     BACKEND_URL = "http://127.0.0.1:8000/"
     FRONTEND_URL = "http://localhost:5173/"
 else:
-    BACKEND_URL = "https://nooridal.com/"
-    FRONTEND_URL = "https://florence-project-fe.vercel.app/"
+    BACKEND_URL = "https://nooridal.click/"
+    FRONTEND_URL = "https://nooridal.com/"
 
 
 
