@@ -84,8 +84,8 @@ class LoginSerializer(serializers.Serializer):
 class PregnancySerializer(serializers.ModelSerializer):
     class Meta:
         model = Pregnancy
-        fields = ['pregnancy_id', 'husband_id', 'baby_name', 'due_date', 
-                 'current_week', 'created_at', 'updated_at', 'high_risk']
+        fields = ['pregnancy_id', 'baby_name', 'due_date', 
+                 'current_week', 'created_at', 'updated_at', 'high_risk', 'is_active']
         read_only_fields = ['pregnancy_id', 'created_at', 'updated_at']
 
     def validate_current_week(self, value):
