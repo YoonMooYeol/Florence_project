@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt', #JWT 인증
     "rest_framework", #DRF
     "rest_framework.authtoken", #Token 인증
+    'rest_framework_simplejwt.token_blacklist', # 토큰 블랙리스트 기능
     "corsheaders", #CORS 허용
     "drf_spectacular", #API 문서
     'django_celery_beat', # Celery

@@ -1177,5 +1177,3 @@ class DeleteAccountView(APIView):
 
 
 
-
-
