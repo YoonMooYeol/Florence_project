@@ -132,7 +132,7 @@ class Pregnancy(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     high_risk = models.BooleanField(default=False, verbose_name='고위험 임신 여부')
-
+    is_active = models.BooleanField(default=True, verbose_name='활성화 여부')
     class Meta:
         verbose_name = '임신 정보'
         verbose_name_plural = '임신 정보'
