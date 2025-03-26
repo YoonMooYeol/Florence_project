@@ -187,7 +187,7 @@ class PregnancyContext:
     def _update_conversation_summary(self):
         """대화 내역 요약 업데이트"""
         # 최근 3개 대화만 유지
-        recent_conversations = self.conversation_history[-3:] if len(self.conversation_history) > 3 else self.conversation_history
+        recent_conversations = self.conversation_history[-5:] if len(self.conversation_history) > 3 else self.conversation_history
         
         summary = "이전 대화 내용:\n"
         for i, conv in enumerate(recent_conversations):
@@ -247,7 +247,7 @@ class PregnancyContext:
 @input_guardrail
 def check_appropriate_content(context, agent, input):
     """부적절한 내용이 있는지 확인하는 가드레일"""
-    inappropriate_keywords = ["술", "담배", "약물", "다이어트", "살 빼기"]
+    inappropriate_keywords = ["술", "담배", "약물", "다이어트", "살 빼기", "컴퓨터 코드"]
     
     if isinstance(input, str):
         for keyword in inappropriate_keywords:
