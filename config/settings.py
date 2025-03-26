@@ -35,9 +35,9 @@ django_env = os.environ.get('DJANGO_ENV')
 # SECURITY WARNING: keep the secret key used in production secret!
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
-ALLOWED_HOSTS = ['nooridal.com', 'www.nooridal.com']
+ALLOWED_HOSTS = ['*']
 # 만약 www.nooridal.com도 사용한다면:
 # ALLOWED_HOSTS = ['nooridal.com', 'www.nooridal.com']
 
@@ -94,24 +94,28 @@ MIDDLEWARE = [
 ROOT_URLCONF = "config.urls"
 
 
-# CORS_ALLOW_ALL_ORIGINS = True #TODO: 모든 도메인에서 접근 가능하도록 하는 코드. 배포 후 주석처리
-CSRF_COOKIE_SECURE = True
-SECURE_SSL_REDIRECT = True
-SESSION_COOKIE_SECURE = True
+CORS_ALLOW_ALL_ORIGINS = True #TODO: 모든 도메인에서 접근 가능하도록 하는 코드. 배포 후 주석처리
+CSRF_COOKIE_SECURE = False
+SECURE_SSL_REDIRECT = False
+SESSION_COOKIE_SECURE = False
 
 # HSTS 설정 (1년 동안 HTTPS만 허용, 서브도메인 포함, 프리로드 신청)
-SECURE_HSTS_SECONDS = 31536000
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
+# SECURE_HSTS_SECONDS = 31536000
+# SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+# SECURE_HSTS_PRELOAD = True
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "content-type",
 ]
 
+# 허용할 오리진 확장 (이미 설정된 것 외에도)
 CORS_ALLOWED_ORIGINS = [
     "https://nooridal.com",
     "https://www.nooridal.com",
+    "http://localhost:3000",  # React 개발 서버
+    "http://localhost:8000",  # Django 개발 서버
+    "https://nooridal.click",  # 카카오 콜백 URL
 ]
 
 
