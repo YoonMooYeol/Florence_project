@@ -9,7 +9,7 @@ from .views import (
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
     NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView, RegisterSendEmailView,
     RegisterCheckView, FollowUnfollowView, FollowListView, FollowersListView, RetrieveUserByEmailView,
-    PhotoViewSet
+    PhotoViewSet, DeleteAccountView
 )
 
 pregnancy_router = DefaultRouter()
@@ -59,5 +59,6 @@ urlpatterns = [
 
     path('users/me/',include(profile_image_router.urls)),
 
+    path('users/me/delete-account/', DeleteAccountView.as_view(), name='delete-account'),
 
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

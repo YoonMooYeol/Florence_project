@@ -17,6 +17,7 @@ from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
 from rest_framework.generics import GenericAPIView, ListAPIView
+
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.decorators import action
 
@@ -26,6 +27,9 @@ from django.contrib.auth import authenticate
 from django.conf import settings
 from django.core.mail import get_connection, EmailMultiAlternatives
 
+from django.contrib.auth import logout
+
+from calendars.models import BabyDiary
 from .serializers import (
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
     PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer,
@@ -35,6 +39,7 @@ from .models import User, Pregnancy, Follow, Photo
 from dotenv import load_dotenv
 
 from accounts.utils.email_utils import EmailUtils
+from accounts.utils.delete_utils import UserDataDeletionService
 
 # .env 파일 로드
 load_dotenv()
@@ -1148,6 +1153,25 @@ class PhotoViewSet(viewsets.ModelViewSet):
             "image_url": photo.image.url if photo.image else None,
             "image_exists": bool(photo.image)
         })
+
+class DeleteAccountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        user = request.user
+        deletion_service = UserDataDeletionService(user)
+        deletion_service.delete_related_data()
+        deletion_service.blacklist_tokens(request) # 토큰 블랙리스트 처리
+
+        user.delete()
+
+        logout(request)
+
+        return Response({"message": "탈퇴가 완료되었습니다. 다음에 또 방문해주세요 ☺️"}, status=status.HTTP_200_OK)
+
+
+
+
 
 
 
