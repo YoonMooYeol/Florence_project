@@ -48,7 +48,7 @@ class EventFilter(filters.FilterSet):
         model = Event
         fields = ['start_date', 'end_date', 'event_type', 'start_date_from', 'start_date_to', 'end_date_from', 'end_date_to']
 
-class EventViewSet(viewsets.ModelViewSet):
+class EventViewSet(viewsets.ViewSet):
     """
     일정 관리 ViewSet
     
@@ -61,18 +61,18 @@ class EventViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     filterset_class = EventFilter
     
-    def get_queryset(self):
+    def list(self, request):
         """
         기본 쿼리셋을 가져오고, 반복 일정에 대해 가상 인스턴스를 생성합니다.
         """
         # 쿼리 파라미터 로깅
-        start_date_from = self.request.query_params.get('start_date_from')
-        start_date_to = self.request.query_params.get('start_date_to')
+        start_date_from = request.query_params.get('start_date_from')
+        start_date_to = request.query_params.get('start_date_to')
         
         logger.info(f"Filtering events with start_date_from: {start_date_from}, start_date_to: {start_date_to}")
         
         # 사용자의 일정만 조회
-        queryset = Event.objects.filter(user=self.request.user)
+        queryset = Event.objects.filter(user=request.user)
         
         # 날짜 범위 필터링
         if start_date_from:
@@ -113,241 +113,41 @@ class EventViewSet(viewsets.ModelViewSet):
                 result_events.extend(virtual_instances)
         
         logger.info(f"Total events (including virtual recurring instances): {len(result_events)}")
-        return result_events
+        
+        serializer = EventSerializer(result_events, many=True)
+        return Response(serializer.data)
     
-    def _expand_recurring_event(self, event, start_date, end_date):
-        """
-        반복 일정에 대해 지정된 날짜 범위 내의 가상 인스턴스 생성
-        """
-        if not event.recurrence_rules:
-            return []
-        
-        recurrence_rules = event.recurrence_rules
-        pattern = recurrence_rules.get('pattern')
-        until_date_str = recurrence_rules.get('until')
-        exceptions = recurrence_rules.get('exceptions', [])
-        
-        # 종료일이 지정되어 있지 않은 경우 기본값 설정 (1년)
-        if until_date_str:
-            until_date = datetime.strptime(until_date_str, '%Y-%m-%d').date()
-        else:
-            until_date = event.start_date + timedelta(days=365)
-        
-        # 조회 범위의 종료일이 반복 종료일보다 이후인 경우 종료일로 제한
-        end_date = min(end_date, until_date)
-        
-        # 조회 범위가 반복 시작일보다 이전이거나, 반복 종료일보다 이후인 경우 빈 리스트 반환
-        if end_date < event.start_date or start_date > until_date:
-            return []
-        
-        # 멀티데이 이벤트인 경우 일정 기간 계산
-        event_duration = None
-        if event.end_date:
-            event_duration = (event.end_date - event.start_date).days
-        
-        # 결과 리스트 준비
-        virtual_instances = []
-        
-        # 첫 날짜가 조회 범위 내에 있으면 원본 이벤트 추가
-        if start_date <= event.start_date <= end_date:
-            if event.start_date.strftime('%Y-%m-%d') not in exceptions:
-                virtual_instances.append(event)
-        
-        current_date = event.start_date
-        
-        if pattern == 'daily':
-            # 매일 반복
-            current_date += timedelta(days=1)  # 원본 다음날부터 시작
-            
-            while current_date <= end_date:
-                if current_date < start_date:
-                    current_date += timedelta(days=1)
-                    continue
-                    
-                # 예외 날짜 확인
-                if current_date.strftime('%Y-%m-%d') in exceptions:
-                    current_date += timedelta(days=1)
-                    continue
-                
-                # 가상 인스턴스 생성
-                instance = self._create_virtual_instance(
-                    event, current_date, event_duration
-                )
-                virtual_instances.append(instance)
-                
-                current_date += timedelta(days=1)
-                
-        elif pattern == 'weekly':
-            # 매주 반복 (같은 요일)
-            current_date += timedelta(days=7)  # 1주일 후부터 시작
-            
-            while current_date <= end_date:
-                if current_date < start_date:
-                    current_date += timedelta(days=7)
-                    continue
-                    
-                # 예외 날짜 확인
-                if current_date.strftime('%Y-%m-%d') in exceptions:
-                    current_date += timedelta(days=7)
-                    continue
-                
-                # 가상 인스턴스 생성
-                instance = self._create_virtual_instance(
-                    event, current_date, event_duration
-                )
-                virtual_instances.append(instance)
-                
-                current_date += timedelta(days=7)
-                
-        elif pattern == 'monthly':
-            # 매월 반복 (같은 날짜)
-            day_of_month = current_date.day
-            
-            # 첫 번째 반복일 계산 (다음 달 같은 날짜)
-            if current_date.month == 12:
-                next_month = 1
-                next_year = current_date.year + 1
-            else:
-                next_month = current_date.month + 1
-                next_year = current_date.year
-            
-            last_day = calendar.monthrange(next_year, next_month)[1]
-            actual_day = min(day_of_month, last_day)
-            
-            try:
-                current_date = date(next_year, next_month, actual_day)
-            except ValueError:
-                # 유효하지 않은 날짜인 경우 다음 달 1일
-                current_date = date(next_year, next_month, 1)
-            
-            # 매월 반복 계산
-            while current_date <= end_date:
-                if current_date < start_date:
-                    # 다음 달로 이동
-                    if current_date.month == 12:
-                        next_month = 1
-                        next_year = current_date.year + 1
-                    else:
-                        next_month = current_date.month + 1
-                        next_year = current_date.year
-                    
-                    last_day = calendar.monthrange(next_year, next_month)[1]
-                    actual_day = min(day_of_month, last_day)
-                    
-                    try:
-                        current_date = date(next_year, next_month, actual_day)
-                    except ValueError:
-                        current_date = date(next_year, next_month, 1)
-                    continue
-                
-                # 예외 날짜 확인
-                if current_date.strftime('%Y-%m-%d') in exceptions:
-                    # 다음 달로 이동
-                    if current_date.month == 12:
-                        next_month = 1
-                        next_year = current_date.year + 1
-                    else:
-                        next_month = current_date.month + 1
-                        next_year = current_date.year
-                    
-                    last_day = calendar.monthrange(next_year, next_month)[1]
-                    actual_day = min(day_of_month, last_day)
-                    
-                    try:
-                        current_date = date(next_year, next_month, actual_day)
-                    except ValueError:
-                        current_date = date(next_year, next_month, 1)
-                    continue
-                
-                # 가상 인스턴스 생성
-                instance = self._create_virtual_instance(
-                    event, current_date, event_duration
-                )
-                virtual_instances.append(instance)
-                
-                # 다음 달로 이동
-                if current_date.month == 12:
-                    next_month = 1
-                    next_year = current_date.year + 1
-                else:
-                    next_month = current_date.month + 1
-                    next_year = current_date.year
-                
-                last_day = calendar.monthrange(next_year, next_month)[1]
-                actual_day = min(day_of_month, last_day)
-                
-                try:
-                    current_date = date(next_year, next_month, actual_day)
-                except ValueError:
-                    current_date = date(next_year, next_month, 1)
-                
-        elif pattern == 'yearly':
-            # 매년 반복 (같은 월, 같은 날)
-            origin_month = current_date.month
-            origin_day = current_date.day
-            
-            # 다음 해부터 시작
-            for year in range(current_date.year + 1, end_date.year + 1):
-                try:
-                    current_date = date(year, origin_month, origin_day)
-                    
-                    if current_date > end_date:
-                        break
-                        
-                    if current_date < start_date:
-                        continue
-                    
-                    # 예외 날짜 확인
-                    if current_date.strftime('%Y-%m-%d') in exceptions:
-                        continue
-                    
-                    # 가상 인스턴스 생성
-                    instance = self._create_virtual_instance(
-                        event, current_date, event_duration
-                    )
-                    virtual_instances.append(instance)
-                    
-                except ValueError:
-                    # 윤년 관련 문제 (2월 29일 등) - 건너뜀
-                    continue
-        
-        return virtual_instances
+    def retrieve(self, request, pk=None):
+        event = get_object_or_404(Event, event_id=pk, user=request.user)
+        serializer = EventDetailSerializer(event)
+        return Response(serializer.data)
     
-    def _create_virtual_instance(self, event, new_date, duration=None):
-        """
-        반복 일정의 가상 인스턴스를 생성합니다.
-        """
-        # 이벤트 객체 복사 (얕은 복사)
-        instance = copy.copy(event)
-        
-        # 가상 인스턴스임을 표시하는 속성 추가
-        instance._is_virtual = True
-        instance._original_event_id = event.event_id
-        
-        # 날짜 설정
-        instance.start_date = new_date
-        if duration is not None:
-            instance.end_date = new_date + timedelta(days=duration)
-        else:
-            instance.end_date = None
-        
-        return instance
+    def create(self, request):
+        serializer = EventDetailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
     
-    def get_serializer_class(self):
-        if self.action in ['retrieve', 'create', 'update', 'partial_update']:
-            return EventDetailSerializer
-        return EventSerializer
-
-    def perform_create(self, serializer):
-        # 사용자 정보 자동 설정
-        serializer.save(user=self.request.user)
-
-    def destroy(self, request, *args, **kwargs):
+    def update(self, request, pk=None):
+        event = get_object_or_404(Event, event_id=pk, user=request.user)
+        serializer = EventDetailSerializer(event, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+    
+    def partial_update(self, request, pk=None):
+        event = get_object_or_404(Event, event_id=pk, user=request.user)
+        serializer = EventDetailSerializer(event, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+    
+    def destroy(self, request, pk=None):
         """
         일정 삭제 메서드 (단일 일정 삭제)
         """
-        instance = self.get_object()
-        self.perform_destroy(instance)
+        event = get_object_or_404(Event, event_id=pk, user=request.user)
+        event.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     
     @action(detail=True, methods=['delete'])
@@ -359,7 +159,7 @@ class EventViewSet(viewsets.ModelViewSet):
         - delete_type: 삭제 유형 (this_only, this_and_future, all)
         - event_date: 타겟 날짜 (가상 인스턴스의 경우 필요, YYYY-MM-DD 형식)
         """
-        event = self.get_object()
+        event = get_object_or_404(Event, event_id=pk, user=request.user)
         delete_type = request.query_params.get('delete_type', 'this_only')
         event_date_str = request.query_params.get('event_date')
         
@@ -377,7 +177,7 @@ class EventViewSet(viewsets.ModelViewSet):
         
         if not event.recurrence_rules:
             # 반복 일정이 아닌 경우 그냥 삭제
-            self.perform_destroy(event)
+            event.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         
         # 1. 이 일정만 삭제 (예외 추가)
@@ -395,7 +195,7 @@ class EventViewSet(viewsets.ModelViewSet):
         elif delete_type == 'this_and_future':
             # 타겟 날짜가 원본 시작일과 같거나 이전이면 완전 삭제
             if event_date <= event.start_date:
-                self.perform_destroy(event)
+                event.delete()
                 return Response(status=status.HTTP_204_NO_CONTENT)
             
             # 아니면 until 설정 (하루 전까지만 반복)
@@ -407,7 +207,7 @@ class EventViewSet(viewsets.ModelViewSet):
         
         # 3. 모든 반복 일정 삭제 (원본 삭제)
         elif delete_type == 'all':
-            self.perform_destroy(event)
+            event.delete()
         
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -420,7 +220,7 @@ class EventViewSet(viewsets.ModelViewSet):
         - update_type: 수정 유형 (this_only, this_and_future, all)
         - event_date: 타겟 날짜 (가상 인스턴스의 경우 필요, YYYY-MM-DD 형식)
         """
-        event = self.get_object()
+        event = get_object_or_404(Event, event_id=pk, user=request.user)
         update_type = request.query_params.get('update_type', 'this_only')
         event_date_str = request.query_params.get('event_date')
         
@@ -438,7 +238,7 @@ class EventViewSet(viewsets.ModelViewSet):
         
         if not event.recurrence_rules:
             # 반복 일정이 아닌 경우 일반 업데이트
-            serializer = self.get_serializer(event, data=request.data, partial=True)
+            serializer = EventDetailSerializer(event, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
             serializer.save()
             return Response(serializer.data)
@@ -464,7 +264,7 @@ class EventViewSet(viewsets.ModelViewSet):
                 new_end_date = event_date + timedelta(days=duration)
                 new_data['end_date'] = new_end_date.strftime('%Y-%m-%d')
             
-            serializer = self.get_serializer(data=new_data)
+            serializer = EventDetailSerializer(data=new_data)
             serializer.is_valid(raise_exception=True)
             serializer.save(user=self.request.user)
             
@@ -489,7 +289,7 @@ class EventViewSet(viewsets.ModelViewSet):
                 new_end_date = event_date + timedelta(days=duration)
                 new_data['end_date'] = new_end_date.strftime('%Y-%m-%d')
             
-            serializer = self.get_serializer(data=new_data)
+            serializer = EventDetailSerializer(data=new_data)
             serializer.is_valid(raise_exception=True)
             serializer.save(user=self.request.user)
             
@@ -498,7 +298,7 @@ class EventViewSet(viewsets.ModelViewSet):
         # 3. 모든 반복 일정 수정
         elif update_type == 'all':
             # 원본 일정 업데이트
-            serializer = self.get_serializer(event, data=request.data, partial=True)
+            serializer = EventDetailSerializer(event, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
             serializer.save()
             
