@@ -936,15 +936,36 @@ class FindUsernameAPIView(GenericAPIView):
 
 class FollowUnfollowView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = FollowSerializer
+    serializer_class = FollowUserSerializer
+
+    def get_following_user(self, user_id=None, username=None):
+        """ user_id 또는 email을 이용하여 사용자 객체를 가져옴 """
+        if user_id:
+            try:
+                return User.objects.get(user_id=user_id)
+            except User.DoesNotExist:
+                return None
+        elif username:
+            try:
+                return User.objects.get(username=username)
+            except User.DoesNotExist:
+                return None
+        return None
 
     def post(self, request, *args, **kwargs):
         """ 팔로우 기능 """
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        username = serializer.validated_data.get("username")
-        following_user = get_object_or_404(User, username=username)
+        # URL에서 username 파라미터 가져오기
+        username= kwargs.get('username')
+        
+        # username이 없으면 request.data에서 user_id 사용
+        if username:
+            following_user = self.get_following_user(username=username)
+        else:
+            user_id = request.data.get('user_id')
+            if not user_id:
+                return Response({"error": "팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            following_user = self.get_following_user(user_id=user_id)
+            
         follower = request.user
 
         if following_user == follower:
@@ -971,13 +992,51 @@ class FollowUnfollowView(generics.GenericAPIView):
         if not follow:
             return Response({"error": "팔로우 관계가 존재하지 않습니다."}, status=status.HTTP_404_NOT_FOUND)
 
-        follow.delete()
-        return Response({"message": f"{following_user.username} 님을 언팔로우했습니다.", "status": 0},
-                        status=status.HTTP_200_OK)
+
+class FollowersListView(ListAPIView):
+    serializer_class = FollowUserSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post']  # GET과 POST 메소드 모두 허용
+
+    def get_queryset(self):
+        return Follow.objects.filter(following=self.request.user)
+        
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        return context
+        
+    def get(self, request, *args, **kwargs):
+        # ListAPIView의 기본 get 메소드 호출
+        return self.list(request, *args, **kwargs)
+        
+    def post(self, request, *args, **kwargs):
+        # POST 요청도 동일하게 처리 (GET과 동일하게 목록 반환)
+        return self.list(request, *args, **kwargs)
+
+class FollowersListView(ListAPIView):
+    serializer_class = FollowUserSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post']  # GET과 POST 메소드 모두 허용
+
+    def get_queryset(self):
+        return Follow.objects.filter(following=self.request.user)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        return context
+
+    def get(self, request, *args, **kwargs):
+        # ListAPIView의 기본 get 메소드 호출
+        return self.list(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        # POST 요청도 동일하게 처리 (GET과 동일하게 목록 반환)
+        return self.list(request, *args, **kwargs)
+
 
 
 class RetrieveUserByUsernameView(GenericAPIView):
-    """ username 으로 사용자 검색 """
+    """ ID로 사용자 검색 """
     permission_classes = [permissions.AllowAny]  # [IsAuthenticated] 배포 전 교체
 
     def get(self, request, *args, **kwargs):
