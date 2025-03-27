@@ -213,15 +213,15 @@ class FollowUserSerializer(serializers.ModelSerializer):
     # 팔로워와 팔로잉 사용자의 상세 정보를 포함시키기 위한 필드
     follower_detail = serializers.SerializerMethodField()
     following_detail = serializers.SerializerMethodField()
-    
-    # 현재 로그인한 사용자가 이 사용자를 팔로우하고 있는지 여부
     is_following = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Follow
-        fields = ['id', 'follower', 'following', 'follower_detail', 'following_detail', 'is_following']
-        read_only_fields = ['id', 'created_at']
-    
+
+    # 현재 로그인한 사용자가 이 사용자를 팔로우하고 있는지 여부
+    fields = ['id', 'follower', 'following', 'follower_detail', 'following_detail', 'is_following']
+    read_only_fields = ['id', 'created_at']
+
     def get_follower_detail(self, obj):
         """팔로워 사용자의 상세 정보를 반환"""
         return {
@@ -229,7 +229,7 @@ class FollowUserSerializer(serializers.ModelSerializer):
             'name': obj.follower.name,
             'email': obj.follower.email
         }
-        
+
     def get_following_detail(self, obj):
         """팔로잉 사용자의 상세 정보를 반환"""
         return {
@@ -237,27 +237,31 @@ class FollowUserSerializer(serializers.ModelSerializer):
             'name': obj.following.name,
             'email': obj.following.email
         }
-    
+
     def get_is_following(self, obj):
         """현재 로그인한 사용자가 이 사용자를 팔로우하고 있는지 여부"""
         request = self.context.get('request')
         if not request or not request.user.is_authenticated:
             return False
-            
-        # 팔로잉 탭에서는 following 사용자를 로그인 사용자가 팔로우하는지 확인 (항상 True)
+
+        # 팔로잉 탭에서는 following 사용자를 로그인 사용자가 팔로우하는지 확인
         # 팔로워 탭에서는 follower 사용자를 로그인 사용자가 팔로우하는지 확인
         user_to_check = None
-        
-        # URL 패턴으로 현재 보고 있는 탭 확인
+
+        # 요청된 URL을 통해 현재 경로를 명시적으로 확인
         if 'followers' in request.path:
             # 팔로워 탭: 나의 팔로워들을 내가 팔로우하는지 확인
             user_to_check = obj.follower
+        elif 'following' in request.path:
+            # 팔로잉 탭: 내가 팔로우하고 있는 사용자를 확인
+            user_to_check = obj.following
         else:
-            # 팔로잉 탭: 항상 True (내가 팔로우하고 있기 때문)
-            return True
-            
+            # 팔로잉 탭이 아닌 경우 기본적으로 팔로우 여부 확인
+            user_to_check = obj.following
+
+        # 팔로우 관계 존재 여부 확인
         return Follow.objects.filter(
-            follower=request.user, 
+            follower=request.user,
             following=user_to_check
         ).exists()
 
