@@ -209,30 +209,61 @@ class RegisterEmailSerializer(serializers.Serializer):
         return value
 
 
-class FollowSerializer(serializers.ModelSerializer):
-    followers_count = serializers.IntegerField(source='followers.count', read_only=True)
-    following_count = serializers.IntegerField(source='following.count', read_only=True)
-    followers = serializers.SerializerMethodField()
-    following = serializers.SerializerMethodField()
+class FollowUserSerializer(serializers.ModelSerializer):
+    # 팔로워와 팔로잉 사용자의 상세 정보를 포함시키기 위한 필드
+    follower_detail = serializers.SerializerMethodField()
+    following_detail = serializers.SerializerMethodField()
     is_following = serializers.SerializerMethodField()
-    username = serializers.CharField(source='following.username', read_only=True)
-    name = serializers.CharField(source='following.name', read_only=True)
 
     class Meta:
         model = Follow
-        fields = ["id", "username", "name", "followers_count", "following_count",
-                  "followers", "following", "is_following"]
 
-    def get_followers(self, obj):
-        return [f.follower.username for f in obj.followers.all()]
+    # 현재 로그인한 사용자가 이 사용자를 팔로우하고 있는지 여부
+    fields = ['id', 'follower', 'following', 'follower_detail', 'following_detail', 'is_following']
+    read_only_fields = ['id', 'created_at']
 
-    def get_following(self, obj):
-        return [f.following.username for f in obj.following.all()]
+    def get_follower_detail(self, obj):
+        """팔로워 사용자의 상세 정보를 반환"""
+        return {
+            'user_id': str(obj.follower.user_id),
+            'name': obj.follower.name,
+            'email': obj.follower.email
+        }
+
+    def get_following_detail(self, obj):
+        """팔로잉 사용자의 상세 정보를 반환"""
+        return {
+            'user_id': str(obj.following.user_id),
+            'name': obj.following.name,
+            'email': obj.following.email
+        }
 
     def get_is_following(self, obj):
-        request = self.context.get("request")
-        return (request.user.is_authenticated and
-                Follow.objects.filter(follower=request.user, following=obj.following).exists())
+        """현재 로그인한 사용자가 이 사용자를 팔로우하고 있는지 여부"""
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+
+        # 팔로잉 탭에서는 following 사용자를 로그인 사용자가 팔로우하는지 확인
+        # 팔로워 탭에서는 follower 사용자를 로그인 사용자가 팔로우하는지 확인
+        user_to_check = None
+
+        # 요청된 URL을 통해 현재 경로를 명시적으로 확인
+        if 'followers' in request.path:
+            # 팔로워 탭: 나의 팔로워들을 내가 팔로우하는지 확인
+            user_to_check = obj.follower
+        elif 'following' in request.path:
+            # 팔로잉 탭: 내가 팔로우하고 있는 사용자를 확인
+            user_to_check = obj.following
+        else:
+            # 팔로잉 탭이 아닌 경우 기본적으로 팔로우 여부 확인
+            user_to_check = obj.following
+
+        # 팔로우 관계 존재 여부 확인
+        return Follow.objects.filter(
+            follower=request.user,
+            following=user_to_check
+        ).exists()
 
 
 class PhotoSerializer(serializers.ModelSerializer):

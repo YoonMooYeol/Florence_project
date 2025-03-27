@@ -16,7 +16,7 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as JWTTokenRefreshView
-from rest_framework.generics import GenericAPIView, RetrieveAPIView
+from rest_framework.generics import GenericAPIView, ListAPIView
 
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.decorators import action
@@ -33,7 +33,7 @@ from calendars.models import BabyDiary
 from .serializers import (
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
     PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer,
-    PhotoSerializer, FollowSerializer
+    PhotoSerializer, FollowUserSerializer
 )
 from .models import User, Pregnancy, Follow, Photo
 from dotenv import load_dotenv
@@ -109,57 +109,57 @@ class RegisterCheckView(APIView):
 
         if not email or not code:
             return Response({"success": False, "message": "이메일과 인증 코드를 입력하세요."},
-                status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_400_BAD_REQUEST)
 
         if not EmailUtils.validate_email(email):
             return Response({"success": False, "message": EmailUtils.EMAIL_INVALID_ERROR},
-                status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_400_BAD_REQUEST)
 
         saved_code = EmailUtils.get_verification_code(email)  # 저장된 코드 가져오기
 
         if not saved_code:
             return Response({"success": False, "message": EmailUtils.CODE_EXPIRED_ERROR},  # 만료된 경우
-                status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_400_BAD_REQUEST)
 
         if saved_code != code:
             return Response({"success": False, "message": EmailUtils.CODE_INVALID_ERROR},  # 코드 불일치
-                status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"success": True, "message": "이메일 인증이 완료되었습니다."},
-            status=status.HTTP_200_OK)
+                        status=status.HTTP_200_OK)
 
 class LoginView(APIView):
     """로그인 API"""
     permission_classes = [AllowAny]
-    
+
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         email = serializer.validated_data['email']
         password = serializer.validated_data['password']
-        
+
         # authenticate 함수 사용 (email이 USERNAME_FIELD이므로 email 파라미터로 전달)
         user = authenticate(request, email=email, password=password)
-        
+
         if user:
             # 토큰 생성
             refresh = RefreshToken.for_user(user)
-            
+
             # 토큰에 사용자 정보 추가
             refresh['user_id'] = str(user.user_id)
             refresh['username'] = user.username
             refresh['name'] = user.name
             refresh['email'] = user.email
             refresh['is_pregnant'] = user.is_pregnant
-            
+
             # 액세스 토큰에도 정보 추가
             refresh.access_token['user_id'] = str(user.user_id)
             refresh.access_token['username'] = user.username
             refresh.access_token['name'] = user.name
             refresh.access_token['email'] = user.email
             refresh.access_token['is_pregnant'] = user.is_pregnant
-            
+
             return Response({
                 'message': '로그인 성공',
                 'user_id': str(user.user_id),
@@ -244,7 +244,7 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
         try:
             connection = get_connection(
 
-            # 이메일 설정을 settings에서 가져오기
+                # 이메일 설정을 settings에서 가져오기
                 host=config['HOST'],
                 use_tls=config['USE_TLS'],
                 port=config['PORT'],
@@ -260,7 +260,7 @@ class PasswordResetViewSet(viewsets.GenericViewSet):
                 to=[recipient_email],
                 connection=connection,
             )
-            
+
             # html_content가 제공된 경우에만 HTML 콘텐츠 추가
             if html_content:
                 email.attach_alternative(html_content, "text/html")  # HTML로 변환
@@ -353,10 +353,10 @@ class ChangePasswordView(generics.UpdateAPIView):
     """비밀번호 수정 API"""
     serializer_class = ChangePasswordSerializer
     permission_classes = [IsAuthenticated]
-    
+
     def get_object(self):
         return self.request.user
-    
+
     def put(self, request, *args, **kwargs):  # post 대신 put 사용
         user = self.get_object()
         serializer = self.get_serializer(data=request.data)
@@ -368,15 +368,15 @@ class ChangePasswordView(generics.UpdateAPIView):
                     {"current_password": "현재 비밀번호가 올바르지 않습니다."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # 새 비밀번호로 변경
             user.set_password(serializer.validated_data['new_password'])
             user.save()
-            
+
             return Response({
                 "message": "비밀번호가 성공적으로 변경되었습니다."
             }, status=status.HTTP_200_OK)
-        
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -399,16 +399,16 @@ class UpdateUserInfoView(generics.RetrieveUpdateAPIView):
     """사용자 정보 조회/변경 API"""
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
-    
+
     def get_object(self):
         # 현재 로그인한 사용자의 정보만 수정 가능
         return self.request.user
-    
+
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return UserUpdateSerializer  # 수정용 시리얼라이저 (비밀번호 필드 제외)
         return UserSerializer  # 조회용 시리얼라이저
-    
+
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
@@ -449,7 +449,7 @@ class KakaoLoginCallbackView(APIView):
         # code로 카카오 액세스 토큰 요청
         token_api_url = "https://kauth.kakao.com/oauth/token"
         backend_redirect_uri = f"{BACKEND_URL}v1/accounts/kakao/callback"
-        
+
         # 디버깅을 위한 로그 출력
         print("\n======= 카카오 로그인 콜백 시작 =======")
         print(f"요청 URL: {request.build_absolute_uri()}")
@@ -531,7 +531,7 @@ class KakaoLoginCallbackView(APIView):
 
         # 프론트엔드 콜백 URL 하드코딩
         frontend_redirect_uri = f"{FRONTEND_URL}kakao/callback"
-        
+
         # URL 파라미터 추가 및 리다이렉션
         params = {
             'token': str(refresh.access_token),
@@ -540,7 +540,7 @@ class KakaoLoginCallbackView(APIView):
             'name': user.name,
             'is_pregnant': str(user.is_pregnant).lower()
         }
-        
+
         query_string = "&".join([f"{key}={value}" for key, value in params.items()])
         redirect_url = f"{frontend_redirect_uri}?{query_string}"
 
@@ -934,92 +934,89 @@ class FindUsernameAPIView(GenericAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class FollowUnfollowView(generics.GenericAPIView):
+class FollowUnfollowView(GenericAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = FollowUserSerializer
 
-    def get_following_user(self, user_id=None, username=None):
+    def get_following_user(self, user_id=None, email=None):
         """ user_id 또는 email을 이용하여 사용자 객체를 가져옴 """
         if user_id:
             try:
                 return User.objects.get(user_id=user_id)
             except User.DoesNotExist:
                 return None
-        elif username:
+        elif email:
             try:
-                return User.objects.get(username=username)
+                return User.objects.get(email=email)
             except User.DoesNotExist:
                 return None
         return None
 
     def post(self, request, *args, **kwargs):
         """ 팔로우 기능 """
-        # URL에서 username 파라미터 가져오기
-        username= kwargs.get('username')
-        
-        # username이 없으면 request.data에서 user_id 사용
-        if username:
-            following_user = self.get_following_user(username=username)
+        # URL에서 email 파라미터 가져오기
+        email = kwargs.get('email')
+
+        # email이 없으면 request.data에서 user_id 사용
+        if email:
+            following_user = self.get_following_user(email=email)
         else:
             user_id = request.data.get('user_id')
             if not user_id:
                 return Response({"error": "팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
             following_user = self.get_following_user(user_id=user_id)
-            
+
         follower = request.user
 
-        if following_user == follower:
+        if not following_user:
+            return Response({"error": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+
+        if follower == following_user:
             return Response({"error": "자기 자신을 팔로우할 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         follow, created = Follow.objects.get_or_create(follower=follower, following=following_user)
 
         if created:
-            return Response({"message": f"{following_user.username} 님을 팔로우했습니다.", "status": 1},
+            return Response({"message": f"{following_user.name} 님을 팔로우했습니다.", "status": 1},
                             status=status.HTTP_201_CREATED)
         return Response({"message": "이미 팔로우 중입니다."}, status=status.HTTP_200_OK)
 
     def delete(self, request, *args, **kwargs):
         """ 언팔로우 기능 """
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        # URL에서 email 파라미터 가져오기
+        email = kwargs.get('email')
 
-        username = serializer.validated_data.get("username")
-        following_user = get_object_or_404(User, username=username)
+        # email이 없으면 request.data에서 user_id 사용
+        if email:
+            following_user = self.get_following_user(email=email)
+        else:
+            user_id = request.data.get('user_id')
+            if not user_id:
+                return Response({"error": "언팔로우할 사용자의 ID가 필요합니다."}, status=status.HTTP_400_BAD_REQUEST)
+            following_user = self.get_following_user(user_id=user_id)
+
         follower = request.user
 
-        follow = Follow.objects.filter(follower=follower, following=following_user).first()
+        if not following_user:
+            return Response({"error": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
 
-        if not follow:
+        # 팔로우 관계가 존재하는지 확인 후 삭제
+        try:
+            follow = Follow.objects.get(follower=follower, following=following_user)
+            follow.delete()
+            return Response({"message": f"{following_user.name} 님을 언팔로우했습니다.", "status": 0},
+                            status=status.HTTP_200_OK)
+        except Follow.DoesNotExist:
             return Response({"error": "팔로우 관계가 존재하지 않습니다."}, status=status.HTTP_404_NOT_FOUND)
 
 
-class FollowersListView(ListAPIView):
+class FollowListView(ListAPIView):
     serializer_class = FollowUserSerializer
     permission_classes = [IsAuthenticated]
     http_method_names = ['get', 'post']  # GET과 POST 메소드 모두 허용
 
     def get_queryset(self):
-        return Follow.objects.filter(following=self.request.user)
-        
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        return context
-        
-    def get(self, request, *args, **kwargs):
-        # ListAPIView의 기본 get 메소드 호출
-        return self.list(request, *args, **kwargs)
-        
-    def post(self, request, *args, **kwargs):
-        # POST 요청도 동일하게 처리 (GET과 동일하게 목록 반환)
-        return self.list(request, *args, **kwargs)
-
-class FollowersListView(ListAPIView):
-    serializer_class = FollowUserSerializer
-    permission_classes = [IsAuthenticated]
-    http_method_names = ['get', 'post']  # GET과 POST 메소드 모두 허용
-
-    def get_queryset(self):
-        return Follow.objects.filter(following=self.request.user)
+        return Follow.objects.filter(follower=self.request.user)
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -1033,24 +1030,43 @@ class FollowersListView(ListAPIView):
         # POST 요청도 동일하게 처리 (GET과 동일하게 목록 반환)
         return self.list(request, *args, **kwargs)
 
+class FollowersListView(ListAPIView):
+    serializer_class = FollowUserSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post']  # GET과 POST 메소드 모두 허용
+
+    def get_queryset(self):
+        return Follow.objects.filter(following=self.request.user)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        return context
+
+    def get(self, request, *args, **kwargs):
+        # ListAPIView의 기본 get 메소드 호출
+        return self.list(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        # POST 요청도 동일하게 처리 (GET과 동일하게 목록 반환)
+        return self.list(request, *args, **kwargs)
 
 
-class RetrieveUserByUsernameView(GenericAPIView):
-    """ ID로 사용자 검색 """
+class RetrieveUserByUserView(GenericAPIView):
+    """ 이메일로 사용자 검색 """
     permission_classes = [permissions.AllowAny]  # [IsAuthenticated] 배포 전 교체
 
     def get(self, request, *args, **kwargs):
-        username = request.query_params.get('username')
-        if not username:
-            return Response({"detail": "ID를 작성해주세요."}, status=status.HTTP_400_BAD_REQUEST)
+        email = request.query_params.get('username')
+        if not email:
+            return Response({"detail": "이메일을 작성해주세요."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            user = User.objects.get(username=username)
+            user = User.objects.get(username=email)
             user_data = {
                 'user_id': str(user.user_id),
                 'name': user.name
             }
-            
+
             # 현재 사용자가 인증되어 있다면 팔로우 여부 확인
             if request.user.is_authenticated:
                 is_following = Follow.objects.filter(
@@ -1060,7 +1076,7 @@ class RetrieveUserByUsernameView(GenericAPIView):
                 user_data['is_following'] = is_following
             else:
                 user_data['is_following'] = False
-                
+
             return Response(user_data, status=status.HTTP_200_OK)
         except User.DoesNotExist:
             return Response({"detail": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
@@ -1152,12 +1168,3 @@ class DeleteAccountView(APIView):
         logout(request)
 
         return Response({"message": "탈퇴가 완료되었습니다. 다음에 또 방문해주세요 ☺️"}, status=status.HTTP_200_OK)
-
-
-
-
-
-
-
-
-
