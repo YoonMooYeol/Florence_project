@@ -1056,12 +1056,12 @@ class RetrieveUserByEmailView(GenericAPIView):
     permission_classes = [permissions.AllowAny]  # [IsAuthenticated] 배포 전 교체
 
     def get(self, request, *args, **kwargs):
-        email = request.query_params.get('email')
-        if not email:
+        username = request.query_params.get('username')
+        if not username:
             return Response({"detail": "이메일을 작성해주세요."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            user = User.objects.get(email=email)
+            user = User.objects.get(username=username)
             user_data = {
                 'user_id': str(user.user_id),
                 'name': user.name
