@@ -8,8 +8,7 @@ from .views import (
     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetViewSet,
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
     NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView, RegisterSendEmailView,
-    RegisterCheckView, FollowUnfollowView, FollowListView, FollowersListView, RetrieveUserByEmailView,
-    PhotoViewSet, DeleteAccountView
+    RegisterCheckView, FollowUnfollowView, RetrieveUserByUsernameView,PhotoViewSet, DeleteAccountView
 )
 
 pregnancy_router = DefaultRouter()
@@ -50,13 +49,10 @@ urlpatterns = [
     path('send_register/', RegisterSendEmailView.as_view(), name='register-send'),
     path('check_register/', RegisterCheckView.as_view(), name='check-register'),
 
-    path("follow/<str:email>/", FollowUnfollowView.as_view(), name="follow-toggle"),
-    path("follow/", FollowUnfollowView.as_view(), name="follow-toggle-id"),  # 추가: user_id로 팔로우/언팔로우 하기 위한 URL
-    path('follow-list/following/', FollowListView.as_view(), name='following-list'),
-    path('follow-list/followers/', FollowersListView.as_view(), name='followers-list'),
-
-    path('search/', RetrieveUserByEmailView.as_view(), name='search'),  # 이메일로 사용자 검색
-
+    path('follow/<str:username>/', FollowUnfollowView.as_view(), name='follow_toggle'),
+    path('search/<str:username>/', RetrieveUserByUsernameView.as_view(), name='search-user'),
+    path('users/follower-lists/', RetrieveUserByUsernameView.as_view(), name='follow-lists'),
+    path('users/following-lists/',RetrieveUserByUsernameView.as_view(), name='following-lists'),
     path('users/me/',include(profile_image_router.urls)),
 
     path('users/me/delete-account/', DeleteAccountView.as_view(), name='delete-account'),
