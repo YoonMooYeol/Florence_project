@@ -1051,14 +1051,14 @@ class FollowersListView(ListAPIView):
         return self.list(request, *args, **kwargs)
 
 
-class RetrieveUserByEmailView(GenericAPIView):
-    """ 이메일로 사용자 검색 """
+class RetrieveUserByUsernameView(GenericAPIView):
+    """ username 으로 사용자 검색 """
     permission_classes = [permissions.AllowAny]  # [IsAuthenticated] 배포 전 교체
 
     def get(self, request, *args, **kwargs):
         username = request.query_params.get('username')
         if not username:
-            return Response({"detail": "이메일을 작성해주세요."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "ID를 작성해주세요."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             user = User.objects.get(username=username)

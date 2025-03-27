@@ -8,7 +8,7 @@ from .views import (
     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetViewSet,
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
     NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView, RegisterSendEmailView,
-    RegisterCheckView, FollowUnfollowView, FollowListView, FollowersListView, RetrieveUserByEmailView,
+    RegisterCheckView, FollowUnfollowView, FollowListView, FollowersListView, RetrieveUserByUsernameView,
     PhotoViewSet, DeleteAccountView
 )
 
@@ -55,7 +55,7 @@ urlpatterns = [
     path('follow-list/following/', FollowListView.as_view(), name='following-list'),
     path('follow-list/followers/', FollowersListView.as_view(), name='followers-list'),
 
-    path('search/', RetrieveUserByEmailView.as_view(), name='search'),  # 이메일로 사용자 검색
+    path('search/', RetrieveUserByUsernameView.as_view(), name='search'),  # username으로 사용자 검색
 
     path('users/me/',include(profile_image_router.urls)),
 
