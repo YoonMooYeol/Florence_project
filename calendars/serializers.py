@@ -3,16 +3,70 @@ from .models import Event, DailyConversationSummary, BabyDiary, BabyDiaryPhoto
 from llm.models import LLMConversation
 
 class EventSerializer(serializers.ModelSerializer):
+    """
+    일정 목록 조회용 간략 시리얼라이저
+    """
     class Meta:
         model = Event
         fields = '__all__'
         read_only_fields = ['event_id', 'created_at', 'updated_at', 'user']
 
 class EventDetailSerializer(serializers.ModelSerializer):
+    """
+    일정 상세 정보 및 생성/수정용 시리얼라이저
+    recurrence_rules JSON 필드를 처리합니다.
+    """
     class Meta:
         model = Event
         fields = '__all__'
         read_only_fields = ['event_id', 'created_at', 'updated_at', 'user']
+        
+    def validate(self, data):
+        """
+        recurrence_rules 필드 검증 및 구조 확인
+        """
+        recurrence_rules = data.get('recurrence_rules')
+        
+        # recurrence_rules이 있는 경우 기본 구조 확인
+        if recurrence_rules:
+            # 필수 pattern 필드 확인
+            if 'pattern' not in recurrence_rules:
+                raise serializers.ValidationError({"recurrence_rules": "반복 패턴은 필수 항목입니다."})
+            
+            # pattern 유효성 검증
+            pattern = recurrence_rules.get('pattern')
+            valid_patterns = ['daily', 'weekly', 'monthly', 'yearly']
+            if pattern not in valid_patterns:
+                raise serializers.ValidationError({"recurrence_rules": f"유효한 반복 패턴이 아닙니다. 가능한 값: {', '.join(valid_patterns)}"})
+            
+            # until 날짜 형식 확인
+            until = recurrence_rules.get('until')
+            if until:
+                try:
+                    from datetime import datetime
+                    datetime.strptime(until, '%Y-%m-%d')
+                except ValueError:
+                    raise serializers.ValidationError({"recurrence_rules": "종료일은 YYYY-MM-DD 형식이어야 합니다."})
+            
+            # exceptions 형식 확인
+            exceptions = recurrence_rules.get('exceptions', [])
+            if not isinstance(exceptions, list):
+                raise serializers.ValidationError({"recurrence_rules": "예외 날짜는 리스트 형태여야 합니다."})
+            
+            for exception_date in exceptions:
+                try:
+                    datetime.strptime(exception_date, '%Y-%m-%d')
+                except ValueError:
+                    raise serializers.ValidationError({"recurrence_rules": "예외 날짜는 YYYY-MM-DD 형식이어야 합니다."})
+        
+        # start_date 및 end_date 유효성 검증
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        
+        if end_date and start_date > end_date:
+            raise serializers.ValidationError({"end_date": "종료 날짜는 시작 날짜보다 같거나 이후여야 합니다."})
+        
+        return data
 
 class DailyConversationSummarySerializer(serializers.ModelSerializer):
     class Meta:
