@@ -30,6 +30,19 @@ class Event(models.Model):
         ('yearly', '매년'),
     ]
 
+    EVENT_COLORS = [
+        ('#FFD600', '노랑'),
+        ('#FF6B6B', '빨강'),
+        ('#4ECDC4', '청록'),
+        ('#45B7D1', '하늘'),
+        ('#96CEB4', '민트'),
+        ('#FFEEAD', '연한 노랑'),
+        ('#D4A5A5', '연한 빨강'),
+        ('#9B59B6', '보라'),
+        ('#3498DB', '파랑'),
+        ('#2ECC71', '초록'),
+    ]
+
     event_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='events', verbose_name='사용자')
     title = models.CharField(
@@ -52,6 +65,12 @@ class Event(models.Model):
         blank=True,
         null=True,
         verbose_name='반복 패턴'
+    )
+    event_color = models.CharField(
+        max_length=7,
+        choices=EVENT_COLORS,
+        default='#FFD600',
+        verbose_name='일정 색상'
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
