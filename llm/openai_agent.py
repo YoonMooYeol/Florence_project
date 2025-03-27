@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import time
 
 from agents import Agent, Runner, WebSearchTool, FileSearchTool, trace, handoff, input_guardrail, output_guardrail, GuardrailFunctionOutput
-from agents import RunHooks, RunContextWrapper, Usage, Tool, OutputGuardrailTripwireTriggered
+from agents import RunHooks, RunContextWrapper, Usage, Tool, InputGuardrailTripwireTriggered
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -397,6 +397,7 @@ class OpenAIAgentService:
             name="query_classifier_agent",
             model=self.model_name,
             instructions=query_classifier_instructions,
+            input_guardrails=[check_appropriate_content],
             output_type=QueryClassification
         )
 
@@ -406,6 +407,7 @@ class OpenAIAgentService:
             name="data_verification_agent",
             model=self.model_name,
             instructions=create_agent_instructions(context, data_verification_agent_base_instructions),
+            input_guardrails=[check_appropriate_content],
             output_type=DataValidationResult
         )
 
@@ -603,9 +605,9 @@ class OpenAIAgentService:
                     result.needs_verification = needs_verification
                     result.query_type = query_type
                     return result
-                except (InputGuardrailTripwireTriggered, OutputGuardrailTripwireTriggered) as e:
+                except InputGuardrailTripwireTriggered:
                     # 가드레일 트립와이어가 발동된 경우 커스텀 스트리밍 응답 반환
-                    from agents.streaming import StreamEvent, ModelChunkEvent
+                    from agents import StreamEvent, ModelChunkEvent
                     
                     # 가드레일 메시지 생성
                     guardrail_message = "임신과 관련된 질문이나 대화를 입력해주세요"
@@ -617,7 +619,7 @@ class OpenAIAgentService:
                         yield StreamEvent(type="end")
                     
                     # 스트리밍 응답 객체 생성
-                    from agents.streaming import StreamingAgentOutput
+                    from agents import StreamingAgentOutput
                     result = StreamingAgentOutput(stream=guardrail_stream())
                     result.needs_verification = needs_verification
                     result.query_type = query_type
