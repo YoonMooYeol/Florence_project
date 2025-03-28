@@ -183,12 +183,20 @@ class OpenAIAgentStreamView(APIView):
         """실시간 스트리밍 SSE 이벤트"""
         import json
         import asyncio
-        # from concurrent.futures import ThreadPoolExecutor
         import threading
         
         # 파라미터 추출
         query_text = request.data.get("query_text")
         user_id = request.data.get("user_id")
+        
+        # 인증 토큰 추출
+        auth_header = request.headers.get('Authorization')
+        auth_token = None
+        if auth_header and auth_header.startswith("Bearer "):
+            auth_token = auth_header.split(" ")[1]
+            print(f"뷰: 인증 토큰 추출됨 (길이: {len(auth_token)})")
+        else:
+            print("뷰: Authorization 헤더 없거나 Bearer 토큰 아님.")
         
         if not query_text or not user_id:
             yield f"data: {json.dumps({'error': 'query_text와 user_id는 필수입니다.'})}\n\n"
@@ -197,10 +205,6 @@ class OpenAIAgentStreamView(APIView):
         # 시작 메시지
         yield f"data: {json.dumps({'status': 'start'})}\n\n"
         
-        # # ThreadPoolExecutor를 사용한 병렬 처리
-        # executor = ThreadPoolExecutor(max_workers=1)
-        loop = asyncio.new_event_loop()
-        
         # 스레드간 데이터 큐
         from queue import Queue
         chunk_queue = Queue()
@@ -208,15 +212,17 @@ class OpenAIAgentStreamView(APIView):
         
         def worker():
             """별도 스레드에서 비동기 처리 실행"""
+            loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
             async def stream_processor():
                 try:
-                    # 에이전트 스트림 설정
+                    # 에이전트 스트림 설정 - auth_token 전달
                     stream_result = await openai_agent_service.process_query(
                         query_text=query_text,
                         user_id=user_id,
                         thread_id=request.data.get("thread_id"),
+                        auth_token=auth_token,  # 인증 토큰 전달
                         pregnancy_week=request.data.get("pregnancy_week"),
                         baby_name=request.data.get("baby_name"),
                         stream=True
@@ -306,7 +312,6 @@ class OpenAIAgentStreamView(APIView):
             loop.run_until_complete(stream_processor())
         
         # 스레드 시작
-        import threading
         thread = threading.Thread(target=worker)
         thread.daemon = True
         thread.start()

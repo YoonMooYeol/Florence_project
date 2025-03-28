@@ -1,11 +1,14 @@
 import os
 from dotenv import load_dotenv
 from typing import List, Dict, Any, Optional, Union
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 import time
+import re
+import httpx
+import json
 
 from agents import Agent, Runner, WebSearchTool, FileSearchTool, trace, handoff, input_guardrail, output_guardrail, GuardrailFunctionOutput
-from agents import RunHooks, RunContextWrapper, Usage, Tool, InputGuardrailTripwireTriggered
+from agents import RunHooks, RunContextWrapper, Usage, Tool, InputGuardrailTripwireTriggered, FunctionTool
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -386,6 +389,166 @@ emotional_agent_base_instructions = """
 FileSearchTool에서 가져온 임신 주차별 감정 정보를 활용하세요.
 """
 
+calendar_agent_base_instructions = """
+당신은 사용자의 요청을 분석하여 캘린더에 일정을 등록하는 비서입니다.
+사용자의 메시지({input})에서 다음 정보를 정확히 추출하세요:
+1. 일정 제목 (필수): 예) "병원 진료", "엽산 복용", "요가 수업"
+2. 시작 날짜 (필수): "오늘", "내일", "다음 주 월요일", "10월 25일" 등을 'YYYY-MM-DD' 형식으로 변환하세요. (현재 날짜 기준으로 계산)
+3. 시작 시간 (선택): "오전 10시", "오후 3시 반", "저녁 8시" 등을 'HH:MM' (24시간제) 형식으로 변환하세요. 없으면 종일 일정으로 간주될 수 있습니다.
+4. 종료 날짜 (선택): 시작 날짜와 동일하면 생략 가능. 'YYYY-MM-DD' 형식.
+5. 종료 시간 (선택): 'HH:MM' 형식. 시작 시간만 있고 종료 시간이 없으면 보통 1시간 지속으로 간주될 수 있습니다.
+6. 일정 설명 (선택): 추가적인 메모 사항.
+7. 일정 유형 (선택): 사용자의 설명에서 추론 (appointment: 병원 예약, medication: 약물 복용, symptom: 증상 기록, exercise: 운동, personal: 개인 일정, other: 기타). 없으면 'other' 또는 추론 가능한 유형으로 설정.
+8. 일정 색상 (선택): 유형에 따라 적절한 색상을 제안하거나 사용자가 명시하면 해당 코드를 사용.
+
+**매우 중요:**
+- 필요한 정보(특히 제목과 시작 날짜)가 추출되면, **사용자에게 다시 묻지 말고 즉시 `CalendarTool`을 호출하여 일정을 등록하세요.**
+- **추출된 JSON 데이터를 사용자에게 보여주지 마세요.**
+- `CalendarTool` 실행이 **성공하면**, 도구가 반환하는 성공 메시지(예: "✅ '병원 진료' 일정이 2023-10-04 15:00에 성공적으로 등록되었습니다!")를 사용자에게 그대로 전달하세요.
+- `CalendarTool` 실행이 **실패하면**, 도구가 반환하는 오류 메시지를 바탕으로 사용자에게 실패 사실을 알려주세요. (예: "죄송합니다. 일정 등록 중 오류가 발생했습니다: [오류 내용]")
+- 만약 날짜나 제목 등 필수 정보가 부족하여 추출할 수 없으면, 사용자에게 어떤 정보가 더 필요한지 명확하게 다시 질문하세요.
+"""
+
+# 일정 등록에 필요한 데이터 모델
+class CalendarEventInput(BaseModel):
+    # 추가 속성 금지 설정
+    model_config = ConfigDict(extra='forbid')
+
+    # 필수 필드
+    title: str = Field(..., description="등록할 일정의 제목")
+    start_date: str = Field(..., description="일정 시작 날짜 (YYYY-MM-DD 형식)")
+
+    # 선택 필드
+    description: Optional[str] = Field(description="일정 상세 설명")
+    start_time: Optional[str] = Field(description="일정 시작 시간 (HH:MM 형식, 24시간제)")
+    end_date: Optional[str] = Field(description="일정 종료 날짜 (YYYY-MM-DD 형식)")
+    end_time: Optional[str] = Field(description="일정 종료 시간 (HH:MM 형식, 24시간제)")
+    event_type: Optional[str] = Field(description="일정 유형 (appointment, medication, symptom, exercise, personal, other)")
+    event_color: Optional[str] = Field(description="일정 색상 코드 (예: #FFD600)")
+
+class CalendarTool(FunctionTool):
+    """일정 등록을 위한 도구"""
+    
+    def __init__(self):
+        tool_name = "CalendarTool"
+        tool_description = "캘린더에 새 일정을 등록합니다. 일정 제목과 시작 날짜(YYYY-MM-DD)는 필수입니다."
+
+        # Pydantic 모델에서 스키마 생성
+        tool_params_schema = CalendarEventInput.model_json_schema()
+
+        super().__init__(
+            name=tool_name,
+            description=tool_description,
+            params_json_schema=tool_params_schema,
+            on_invoke_tool=self.run
+        )
+        
+        # 환경에 따른 API 엔드포인트 설정
+        if os.getenv("DJANGO_ENV") == "development":
+            self.api_endpoint = os.getenv("CALENDAR_API_ENDPOINT_DEV", "http://127.0.0.1:8000/v1/calendars/events/")
+        else:
+            self.api_endpoint = os.getenv("CALENDAR_API_ENDPOINT_PROD", "https://nooridal.click/v1/calendars/events/")
+        
+        print(f"CalendarTool initialized. API Endpoint: {self.api_endpoint}")
+
+    async def run(self, context: RunContextWrapper, tool_input: Union[CalendarEventInput, str, Dict]) -> str:
+        print(f"CalendarTool 실행 시작. 받은 tool_input 타입: {type(tool_input)}")
+        
+        # 입력 변환 처리
+        instance: Optional[CalendarEventInput] = None
+        if isinstance(tool_input, CalendarEventInput):
+            instance = tool_input
+        elif isinstance(tool_input, dict):
+            try:
+                instance = CalendarEventInput(**tool_input)
+                print("참고: Dict에서 CalendarEventInput 인스턴스 생성됨.")
+            except Exception as e:
+                print(f"오류: Dict에서 CalendarEventInput 인스턴스 생성 실패: {e}")
+                return f"오류: 일정 정보를 처리하는 중 형식이 맞지 않아 실패했습니다."
+        elif isinstance(tool_input, str):
+            try:
+                json_match = re.search(r'\{.*\}', tool_input, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                    data = json.loads(json_str)
+                    instance = CalendarEventInput(**data)
+                    print("참고: JSON 문자열에서 CalendarEventInput 인스턴스 생성됨.")
+                else:
+                    print("오류: 입력 문자열에서 유효한 JSON 객체를 찾을 수 없음.")
+                    return "오류: 일정 정보를 인식할 수 없습니다."
+            except Exception as e:
+                print(f"오류: JSON 문자열 파싱 또는 CalendarEventInput 인스턴스 생성 실패: {e}")
+                return f"오류: 일정 정보 처리 중 오류가 발생했습니다."
+        else:
+            return f"오류: 죄송합니다, 일정 요청을 처리할 수 없습니다."
+
+        if not instance:
+            return "오류: 일정 정보를 처리하지 못했습니다."
+
+        # 인증 토큰 확인 및 헤더 설정
+        auth_token = getattr(context, 'auth_token', None)
+        headers = {"Content-Type": "application/json"}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+            print("CalendarTool: Authorization 헤더 설정됨.")
+        else:
+            print("CalendarTool 오류: 실행에 필요한 인증 토큰이 없습니다.")
+            return "오류: 일정 등록에 필요한 사용자 인증 정보가 없습니다. 다시 로그인 후 시도해주세요."
+
+        payload = instance.model_dump(exclude_none=True)
+        print(f"CalendarTool Payload: {payload}")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self.api_endpoint,
+                    json=payload,
+                    headers=headers,
+                    timeout=15.0
+                )
+                print(f"CalendarTool API 응답 상태: {response.status_code}")
+                response.raise_for_status()
+
+            # API 응답을 JSON으로 변환하여 결과 메시지 생성
+            result = response.json()
+            start_time_str = f" {result.get('start_time')}" if result.get('start_time') else ""
+            success_msg = f"✅ '{result.get('title', '(제목 없음)')}' 일정이 {result.get('start_date', '(날짜 없음)')}{start_time_str}에 성공적으로 등록되었습니다!"
+            print(f"CalendarTool 성공: {success_msg}")
+            return success_msg
+
+        except httpx.TimeoutException:
+            error_msg = f"일정 등록 실패: 서버 연결 시간 초과"
+            print(f"CalendarTool 오류: {error_msg}")
+            return error_msg
+        except httpx.ConnectError:
+            error_msg = f"일정 등록 실패: 서버에 연결할 수 없습니다."
+            print(f"CalendarTool 오류: {error_msg}")
+            return error_msg
+        except httpx.RequestError as e:
+            error_msg = f"일정 등록 중 네트워크 오류 발생"
+            print(f"CalendarTool 오류: {error_msg}: {e}")
+            return error_msg
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                error_msg = "오류: 사용자 인증에 실패했습니다. 다시 로그인해주세요."
+                print(f"CalendarTool 인증 오류 (401)")
+            else:
+                error_detail = f"HTTP {e.response.status_code} 오류"
+                try:
+                    error_data = e.response.json()
+                    error_detail += f" - {error_data.get('detail', str(error_data))}"
+                except:
+                    error_detail += f" - {e.response.text[:100]}"
+                error_msg = f"일정 등록 실패: {error_detail}"
+                print(f"CalendarTool 오류: {error_msg}")
+            return error_msg
+        except Exception as e:
+            error_msg = f"일정 등록 중 예상치 못한 오류 발생"
+            print(f"CalendarTool 오류: {error_msg}")
+            import traceback
+            traceback.print_exc()
+            return error_msg
+
 class OpenAIAgentService:
     """OpenAI 에이전트 서비스 클래스"""
     
@@ -504,11 +667,22 @@ class OpenAIAgentService:
                 )
             ],
         )
+    def get_calendar_agent(self, context: PregnancyContext) -> Agent:
+            """일정 등록 에이전트를 생성합니다."""
+            return Agent(
+            name="calendar_agent",
+            model=self.model_name,
+            instructions=create_agent_instructions(context, calendar_agent_base_instructions),
+            handoff_description="캘린더에 일정을 등록합니다.",
+            tools=[CalendarTool()],
+            input_guardrails=[check_appropriate_content],
+        )
     
     async def process_query(self, 
                        query_text: str, 
                        user_id: str = None,
                        thread_id: str = None, 
+                       auth_token: Optional[str] = None,  # 인증 토큰 추가
                        pregnancy_week: int = None,
                        baby_name: str = None,
                        high_risk: bool = None,
@@ -516,38 +690,27 @@ class OpenAIAgentService:
                        stream: bool = False) -> Dict[str, Any]:
         """
         사용자 질문 처리 및 응답 생성
-        
-        Args:
-            query_text: 사용자 질문 텍스트
-            user_id: 사용자 ID
-            thread_id: 대화 스레드 ID
-            pregnancy_week: 임신 주차 (선택적)
-            baby_name: 태아 이름 (선택적)
-            stream: 스트리밍 응답 여부
-            
-        Returns:
-            생성된 응답 및 메타데이터
         """
         import sys
         import traceback
         
+        run_start_time = time.time()
         print(f"========== process_query 시작 (stream={stream}) ==========")
-        print(f"thread_id in asyncio: {id(asyncio.current_task())}")
         
         try:
             # 컨텍스트 초기화
-            print(f"컨텍스트 초기화: user_id={user_id}, thread_id={thread_id}")
-            print(f"질문: {query_text}")
             context = PregnancyContext(user_id=user_id, thread_id=thread_id)
             
+            # 인증 토큰을 컨텍스트에 추가
+            if auth_token:
+                setattr(context, 'auth_token', auth_token)
+                print(f"  - 인증 토큰 컨텍스트에 추가됨 (토큰 길이: {len(auth_token)})")
+            else:
+                print("  - 인증 토큰이 전달되지 않았습니다.")
+            
+            # 사용자 데이터 로드
             if user_id:
-                print("사용자 데이터 로드 시작")
-                try:
-                    await context.load_user_data_async()
-                    print("사용자 데이터 로드 완료")
-                except Exception as e:
-                    print(f"사용자 데이터 로드 중 오류: {e}")
-                    print(traceback.format_exc())
+                await context.load_user_data_async()
             
             # 추가 정보 설정
             if pregnancy_week:
@@ -560,7 +723,6 @@ class OpenAIAgentService:
                 context.add_user_info("address", address)
             
             # 훅 초기화
-            print("PregnancyAgentHooks 초기화")
             hooks = PregnancyAgentHooks()
             
             # 질문 분류
@@ -589,23 +751,32 @@ class OpenAIAgentService:
                         needs_verification = False
                         print(f"질문 분류 완료: {query_type}, {needs_verification}")
         
-            # 분류 결과에 따라 바로 적절한 에이전트 선택
-            if query_type == "medical":
-                agent_to_use = self.get_medical_agent(context)
-            elif query_type == "policy":
-                agent_to_use = self.get_policy_agent(context)
-            elif query_type == "nutrition":
-                agent_to_use = self.get_nutrition_agent(context)
-            elif query_type == "exercise":
-                agent_to_use = self.get_exercise_agent(context)
-            elif query_type == "emotional":
-                agent_to_use = self.get_emotional_support_agent(context)
-            else:  # general 또는 기타
-                agent_to_use = self.get_general_agent(context)
-                print("general 또는 기타 에이전트 선택됨")
+            # 일정 관련 키워드 탐지
+            calendar_keywords = ["일정", "등록", "캘린더", "약속", "기록", "메모", "리마인더", "알림", "추가"]
+            
+            if any(keyword in query_text for keyword in calendar_keywords):
+                query_type = "calendar"
+                needs_verification = False
+                agent_to_use = self.get_calendar_agent(context)
+                print(f"[{time.time() - run_start_time:.2f}s] 캘린더 에이전트 선택됨")
+            else:
+                # 분류 결과에 따라 바로 적절한 에이전트 선택
+                if query_type == "medical":
+                    agent_to_use = self.get_medical_agent(context)
+                elif query_type == "policy":
+                    agent_to_use = self.get_policy_agent(context)
+                elif query_type == "nutrition":
+                    agent_to_use = self.get_nutrition_agent(context)
+                elif query_type == "exercise":
+                    agent_to_use = self.get_exercise_agent(context)
+                elif query_type == "emotional":
+                    agent_to_use = self.get_emotional_support_agent(context)
+                else:  # general 또는 기타
+                    agent_to_use = self.get_general_agent(context)
+                    print("general 또는 기타 에이전트 선택됨")
 
             # 에이전트 선택 지점
-            print(f"[{time.time() - start_time:.2f}s] {query_type} 에이전트 선택됨")
+            print(f"[{time.time() - run_start_time:.2f}s] {query_type} 에이전트 선택됨")
 
             # 선택된 에이전트로 바로 실행
             if stream:
@@ -641,6 +812,8 @@ class OpenAIAgentService:
             raise e
         finally:
             print(f"========== process_query 종료 ==========")
+
+
 
 # 서비스 인스턴스 생성
 openai_agent_service = OpenAIAgentService() 
