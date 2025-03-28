@@ -6,7 +6,7 @@ import time
 import re
 import httpx
 import json
-
+from datetime import date
 from agents import Agent, Runner, WebSearchTool, FileSearchTool, trace, handoff, input_guardrail, output_guardrail, GuardrailFunctionOutput
 from agents import RunHooks, RunContextWrapper, Usage, Tool, InputGuardrailTripwireTriggered, FunctionTool
 from django.conf import settings
@@ -22,6 +22,16 @@ load_dotenv()
 model_name = os.getenv("LLM_MODEL") or "gpt-4o-mini"
 openai_api_key = os.getenv("OPENAI_API_KEY")
 vector_store_id = os.getenv("VECTOR_STORE_ID")  # 벡터 스토어 ID
+
+
+def get_current_date():
+    """
+    현재 날짜를 'YYYY-MM-DD' 형식으로 반환
+    
+    Returns:
+        str: 현재 날짜 (예: 2024-03-28)
+    """
+    return date.today().strftime('%Y-%m-%d')
 
 # 라이프사이클 추적을 위한 훅 클래스
 class PregnancyAgentHooks(RunHooks):
@@ -98,7 +108,8 @@ class QueryClassification(BaseModel):
 class PregnancyContext:
     """임신 관련 정보를 저장하는 컨텍스트 클래스"""
     
-    def __init__(self, user_id=None, thread_id=None):
+    def __init__(self, user_id=None, thread_id=None, auth_token=None):
+        self.auth_token = auth_token  # 명시적 필드로 추가
         self.pregnancy_week: Optional[int] = None
         self.user_info: Dict[str, Any] = {}
         self.conversation_history: List[Dict[str, Any]] = []
@@ -391,23 +402,20 @@ FileSearchTool에서 가져온 임신 주차별 감정 정보를 활용하세요
 
 calendar_agent_base_instructions = """
 당신은 사용자의 요청을 분석하여 캘린더에 일정을 등록하는 비서입니다.
-사용자의 메시지({input})에서 다음 정보를 정확히 추출하세요:
-1. 일정 제목 (필수): 예) "병원 진료", "엽산 복용", "요가 수업"
-2. 시작 날짜 (필수): "오늘", "내일", "다음 주 월요일", "10월 25일" 등을 'YYYY-MM-DD' 형식으로 변환하세요. (현재 날짜 기준으로 계산)
-3. 시작 시간 (선택): "오전 10시", "오후 3시 반", "저녁 8시" 등을 'HH:MM' (24시간제) 형식으로 변환하세요. 없으면 종일 일정으로 간주될 수 있습니다.
-4. 종료 날짜 (선택): 시작 날짜와 동일하면 생략 가능. 'YYYY-MM-DD' 형식.
-5. 종료 시간 (선택): 'HH:MM' 형식. 시작 시간만 있고 종료 시간이 없으면 보통 1시간 지속으로 간주될 수 있습니다.
-6. 일정 설명 (선택): 추가적인 메모 사항.
-7. 일정 유형 (선택): 사용자의 설명에서 추론 (appointment: 병원 예약, medication: 약물 복용, symptom: 증상 기록, exercise: 운동, personal: 개인 일정, other: 기타). 없으면 'other' 또는 추론 가능한 유형으로 설정.
-8. 일정 색상 (선택): 유형에 따라 적절한 색상을 제안하거나 사용자가 명시하면 해당 코드를 사용.
 
-**매우 중요:**
-- 필요한 정보(특히 제목과 시작 날짜)가 추출되면, **사용자에게 다시 묻지 말고 즉시 `CalendarTool`을 호출하여 일정을 등록하세요.**
-- **추출된 JSON 데이터를 사용자에게 보여주지 마세요.**
-- `CalendarTool` 실행이 **성공하면**, 도구가 반환하는 성공 메시지(예: "✅ '병원 진료' 일정이 2023-10-04 15:00에 성공적으로 등록되었습니다!")를 사용자에게 그대로 전달하세요.
-- `CalendarTool` 실행이 **실패하면**, 도구가 반환하는 오류 메시지를 바탕으로 사용자에게 실패 사실을 알려주세요. (예: "죄송합니다. 일정 등록 중 오류가 발생했습니다: [오류 내용]")
-- 만약 날짜나 제목 등 필수 정보가 부족하여 추출할 수 없으면, 사용자에게 어떤 정보가 더 필요한지 명확하게 다시 질문하세요.
+**절대 규칙 (매우 중요):**
+1. JSON, 코드, 기술적 데이터를 절대 사용자에게 보여주지 마세요.
+2. 내부 처리용 데이터는 사용자에게 절대 노출하지 마세요.
+3. CalendarTool에 데이터를 전달할 때는 반드시 도구의 API 형식으로만 전달하고, 
+   이 전달 과정을 사용자에게 설명하거나 보여주지 마세요.
+4. 사용자에게는 일반 대화 문장만 사용하세요.
+5. 일정이 등록되면 "일정이 등록되었습니다"와 같은 간단한 확인 메시지만 전달하세요.
+
+사용자의 메시지에서 일정 제목, 날짜, 시간 등을 추출하여 CalendarTool로 등록하세요.
+
+중요: 사용자에게 직접 JSON 객체를 표시하지 마세요. JSON 데이터는 내부 도구에만 전달하세요.
 """
+
 
 # 일정 등록에 필요한 데이터 모델
 class CalendarEventInput(BaseModel):
@@ -454,6 +462,33 @@ class CalendarTool(FunctionTool):
     async def run(self, context: RunContextWrapper, tool_input: Union[CalendarEventInput, str, Dict]) -> str:
         print(f"CalendarTool 실행 시작. 받은 tool_input 타입: {type(tool_input)}")
         
+        # 인증 토큰 접근 - RunContextWrapper.context에서 가져오기
+        auth_token = None
+        
+        # context.context에 접근 (이것이 원래 전달한 객체)
+        if hasattr(context, 'context'):
+            original_context = context.context
+            print(f"원본 컨텍스트 타입: {type(original_context)}")
+            
+            # 딕셔너리인 경우
+            if isinstance(original_context, dict):
+                auth_token = original_context.get('auth_token')
+                print("딕셔너리 컨텍스트에서 auth_token 키로 접근")
+            
+            # PregnancyContext 객체인 경우
+            elif hasattr(original_context, 'auth_token'):
+                auth_token = original_context.auth_token
+                print("객체 컨텍스트에서 auth_token 속성으로 접근")
+        
+        # 헤더 설정
+        headers = {"Content-Type": "application/json"}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+            print(f"토큰을 성공적으로 찾았습니다! (길이: {len(auth_token)})")
+        else:
+            print("인증 토큰을 찾을 수 없습니다. context.context에 없습니다.")
+            return "인증 토큰이 필요합니다. 로그인 상태를 확인해주세요."
+        
         # 입력 변환 처리
         instance: Optional[CalendarEventInput] = None
         if isinstance(tool_input, CalendarEventInput):
@@ -484,16 +519,6 @@ class CalendarTool(FunctionTool):
 
         if not instance:
             return "오류: 일정 정보를 처리하지 못했습니다."
-
-        # 인증 토큰 확인 및 헤더 설정
-        auth_token = getattr(context, 'auth_token', None)
-        headers = {"Content-Type": "application/json"}
-        if auth_token:
-            headers["Authorization"] = f"Bearer {auth_token}"
-            print("CalendarTool: Authorization 헤더 설정됨.")
-        else:
-            print("CalendarTool 오류: 실행에 필요한 인증 토큰이 없습니다.")
-            return "오류: 일정 등록에 필요한 사용자 인증 정보가 없습니다. 다시 로그인 후 시도해주세요."
 
         payload = instance.model_dump(exclude_none=True)
         print(f"CalendarTool Payload: {payload}")
@@ -679,15 +704,18 @@ class OpenAIAgentService:
         )
     
     async def process_query(self, 
-                       query_text: str, 
-                       user_id: str = None,
-                       thread_id: str = None, 
-                       auth_token: Optional[str] = None,  # 인증 토큰 추가
-                       pregnancy_week: int = None,
-                       baby_name: str = None,
-                       high_risk: bool = None,
-                       address: str = None,
-                       stream: bool = False) -> Dict[str, Any]:
+                        query_text: str, 
+                        user_id: str = None,
+                        thread_id: str = None, 
+                        auth_token: Optional[str] = None,
+                        pregnancy_week: int = None,
+                        baby_name: str = None,
+                        high_risk: bool = None,
+                        address: str = None,
+                        stream: bool = False,
+                        today: str = get_current_date()) -> Dict[str, Any]:
+                        
+        
         """
         사용자 질문 처리 및 응답 생성
         """
@@ -701,12 +729,10 @@ class OpenAIAgentService:
             # 컨텍스트 초기화
             context = PregnancyContext(user_id=user_id, thread_id=thread_id)
             
-            # 인증 토큰을 컨텍스트에 추가
+            # auth_token을 PregnancyContext 객체에 직접 추가
             if auth_token:
-                setattr(context, 'auth_token', auth_token)
-                print(f"  - 인증 토큰 컨텍스트에 추가됨 (토큰 길이: {len(auth_token)})")
-            else:
-                print("  - 인증 토큰이 전달되지 않았습니다.")
+                context.auth_token = auth_token  # 명시적 속성으로 추가
+                print(f"PregnancyContext에 auth_token 추가됨 (길이: {len(auth_token)})")
             
             # 사용자 데이터 로드
             if user_id:
@@ -721,7 +747,7 @@ class OpenAIAgentService:
                 context.add_user_info("baby_name", baby_name)
             if address:
                 context.add_user_info("address", address)
-            
+            context.add_user_info("today", today)
             # 훅 초기화
             hooks = PregnancyAgentHooks()
             
@@ -752,7 +778,7 @@ class OpenAIAgentService:
                         print(f"질문 분류 완료: {query_type}, {needs_verification}")
         
             # 일정 관련 키워드 탐지
-            calendar_keywords = ["일정", "등록", "캘린더", "약속", "기록", "메모", "리마인더", "알림", "추가"]
+            calendar_keywords = ["일정", "등록", "캘린더", "약속", "기록", "메모", "리마인더", "알림", "추가", "예약"]
             
             if any(keyword in query_text for keyword in calendar_keywords):
                 query_type = "calendar"
@@ -778,10 +804,15 @@ class OpenAIAgentService:
             # 에이전트 선택 지점
             print(f"[{time.time() - run_start_time:.2f}s] {query_type} 에이전트 선택됨")
 
-            # 선택된 에이전트로 바로 실행
+            # 에이전트 실행 - context 객체 그대로 전달
             if stream:
                 try:
-                    result = Runner.run_streamed(agent_to_use, query_text, context=context, hooks=hooks)
+                    result = Runner.run_streamed(
+                        agent_to_use,
+                        query_text,
+                        context=context,  # PregnancyContext 객체 직접 전달
+                        hooks=hooks
+                    )
                     
                     # 스트리밍 응답과 함께 needs_verification 정보 전달
                     result.needs_verification = needs_verification
