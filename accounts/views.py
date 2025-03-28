@@ -311,7 +311,7 @@ class PasswordResetConfirmViewSet(viewsets.GenericViewSet):
                                 status=status.HTTP_400_BAD_REQUEST)
 
             # 인증 코드 만료 여부 확인
-            if not user.check_reset_code(reset_code):
+            if not EmailUtils.verify_code(user.email, reset_code):
                 return Response({"success": False, "message": "인증 코드가 만료되었습니다."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
@@ -328,7 +328,6 @@ class PasswordResetConfirmViewSet(viewsets.GenericViewSet):
             return Response({"success": False, "message": f"서버 오류: {str(e)}"},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
 class PasswordResetCheckViewSet(viewsets.GenericViewSet):
     """ 비밀번호 재설정 코드 확인 뷰셋 """
     permission_classes = [AllowAny]
@@ -341,12 +340,50 @@ class PasswordResetCheckViewSet(viewsets.GenericViewSet):
 
         # 코드로 사용자 탐색
         user = User.objects.filter(reset_code=code).first()  # User 객체 조회
-        if not user or not user.check_reset_code(code):  # 인증 코드 검증
-            return Response({"success": False, "message": "만료되었거나 잘못된 코드입니다."},
+        if not user:
+            return Response({"success": False, "message": "잘못된 인증 코드입니다."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"success": True, "message": "인증 완료"},
-                        status=status.HTTP_200_OK)
+        try:
+            # 인증 코드 검증
+            EmailUtils.verify_code(user.email, code)
+            return Response({"success": True, "message": "인증 완료"},
+                            status=status.HTTP_200_OK)
+
+        except ValueError as e:
+            return Response({"success": False, "message": str(e)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+
+class PasswordResetViewSet(viewsets.GenericViewSet):
+    """ 비밀번호 재설정 코드 전송 뷰셋 """
+    permission_classes = [AllowAny]
+    serializer_class = PasswordResetSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+
+        # 사용자 확인
+        user = User.objects.get(email=email)
+
+        if not user:
+            return Response({"success": False, "message": "해당 이메일의 사용자가 없습니다."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            # 이메일 전송
+            EmailUtils.send_password_reset_email(email)
+            return Response({"success": True, "message": "인증 코드 전송 성공"},
+                            status=status.HTTP_200_OK)
+        except ValueError:
+            return Response({"success": False, "message": "정확한 이메일 주소를 입력해 주세요."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"success": False, "message": f"이메일 전송 중 오류가 발생했습니다: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 class ChangePasswordView(generics.UpdateAPIView):
