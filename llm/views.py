@@ -9,6 +9,7 @@ from django.http import Http404, JsonResponse, StreamingHttpResponse
 import logging
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
+from datetime import datetime, date
 import json
 import asyncio
 from .agent_loop import get_agent_loop
@@ -35,6 +36,16 @@ User = get_user_model()
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
+
+
+def get_current_date():
+    """
+    현재 날짜를 'YYYY-MM-DD' 형식으로 반환
+    
+    Returns:
+        str: 현재 날짜 (예: 2024-03-28)
+    """
+    return date.today().strftime('%Y-%m-%d')
 
 # 커스텀 get_object_or_404 함수
 def custom_get_object_or_404(klass, *args, **kwargs):
@@ -183,12 +194,21 @@ class OpenAIAgentStreamView(APIView):
         """실시간 스트리밍 SSE 이벤트"""
         import json
         import asyncio
-        # from concurrent.futures import ThreadPoolExecutor
         import threading
+        import re
         
         # 파라미터 추출
         query_text = request.data.get("query_text")
         user_id = request.data.get("user_id")
+        
+        # 인증 토큰 추출 - 명시적 로깅 추가
+        auth_header = request.headers.get('Authorization')
+        auth_token = None
+        if auth_header and auth_header.startswith("Bearer "):
+            auth_token = auth_header.split(" ")[1]
+            print(f"뷰: 인증 토큰 추출됨 (길이: {len(auth_token)})")
+        else:
+            print("뷰: Authorization 헤더 없거나 Bearer 토큰 아님. 헤더 값: {auth_header}")
         
         if not query_text or not user_id:
             yield f"data: {json.dumps({'error': 'query_text와 user_id는 필수입니다.'})}\n\n"
@@ -197,10 +217,6 @@ class OpenAIAgentStreamView(APIView):
         # 시작 메시지
         yield f"data: {json.dumps({'status': 'start'})}\n\n"
         
-        # # ThreadPoolExecutor를 사용한 병렬 처리
-        # executor = ThreadPoolExecutor(max_workers=1)
-        loop = asyncio.new_event_loop()
-        
         # 스레드간 데이터 큐
         from queue import Queue
         chunk_queue = Queue()
@@ -208,15 +224,21 @@ class OpenAIAgentStreamView(APIView):
         
         def worker():
             """별도 스레드에서 비동기 처리 실행"""
+            loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
             async def stream_processor():
                 try:
+                    # JSON 필터링 변수 다시 추가
+                    filtering_json = False
+                    json_buffer = ""
+                    
                     # 에이전트 스트림 설정
                     stream_result = await openai_agent_service.process_query(
                         query_text=query_text,
                         user_id=user_id,
                         thread_id=request.data.get("thread_id"),
+                        auth_token=auth_token,
                         pregnancy_week=request.data.get("pregnancy_week"),
                         baby_name=request.data.get("baby_name"),
                         stream=True
@@ -229,12 +251,39 @@ class OpenAIAgentStreamView(APIView):
                     
                     async for event in stream_result.stream_events():
                         if event.type == "raw_response_event" and hasattr(event.data, 'delta'):
-                            accumulated_response += event.data.delta
-                            chunk_queue.put({"delta": event.data.delta, "complete": False})
+                            delta = event.data.delta
+                            accumulated_response += delta
+                            
+                            # JSON 필터링 로직 복원
+                            if not filtering_json:
+                                # JSON 시작 패턴 확인 (중괄호로 시작하거나 따옴표+중괄호 패턴)
+                                if (delta.strip().startswith('{') or 
+                                    delta.strip().startswith('"') and accumulated_response.rstrip().endswith('{')):
+                                    # JSON 필터링 시작
+                                    filtering_json = True
+                                    json_buffer = delta
+                                    continue
+                                # 정상 텍스트는 전송
+                                chunk_queue.put({"delta": delta, "complete": False})
+                            else:
+                                # 필터링 중인 경우
+                                json_buffer += delta
+                                # JSON 종료 확인
+                                if '}' in delta:
+                                    filtering_json = False
+                                    json_buffer = ""
+                                    # 필터링된 JSON 대신 공백 전송
+                                    chunk_queue.put({"delta": "", "complete": False})
+                                    continue
+                        
+                        # 기존 도구 이벤트 처리는 유지
                         elif event.type == "tool_start":
                             chunk_queue.put({"tool": event.data.name, "status": "start"})
+                        
                         elif event.type == "tool_end":
-                            chunk_queue.put({"tool": event.data.name, "status": "end"})
+                            chunk_queue.put({"tool": event.data.name, "status": "end", "result": event.data.result})
+                            print(f"도구 종료: {event.data.name}, 결과: {event.data.result}")
+                        
                         elif event.type == "handoff":
                             chunk_queue.put({
                                 "handoff": True, 
@@ -242,13 +291,16 @@ class OpenAIAgentStreamView(APIView):
                                 "to": event.data.to_agent
                             })
                     
+                    # 전체 응답 보내기 전에 필터링
+                    filtered_response = re.sub(r'```(?:json)?\s*\{[\s\S]*?\}\s*```', '', accumulated_response)
+                    
                     # 대화 저장
                     context = PregnancyContext(user_id=user_id, thread_id=request.data.get("thread_id"))
-                    await context.save_to_db_async(query_text, accumulated_response)
+                    await context.save_to_db_async(query_text, filtered_response)
                     
                     # 검증이 필요한 경우 스트리밍 후 검증 수행
                     if hasattr(stream_result, 'needs_verification') and stream_result.needs_verification:
-                        print(f"검증 필요: 응답 길이 = {len(accumulated_response)} 글자")
+                        print(f"검증 필요: 응답 길이 = {len(filtered_response)} 글자")
                         # 검증 진행 중임을 알림
                         chunk_queue.put({"verification_status": "start"})
                         
@@ -259,7 +311,7 @@ class OpenAIAgentStreamView(APIView):
                             
                             verification_result = await Runner.run(
                                 verification_agent,
-                                accumulated_response,
+                                filtered_response,
                                 context=context
                             )
                             print("검증 실행 완료")
@@ -291,7 +343,7 @@ class OpenAIAgentStreamView(APIView):
                     
                     # 완료 메시지
                     chunk_queue.put({
-                        "response": accumulated_response,
+                        "response": filtered_response,
                         "complete": True
                     })
                     chunk_queue.put({"status": "done"})
@@ -300,13 +352,12 @@ class OpenAIAgentStreamView(APIView):
                     chunk_queue.put({"error": str(e)})
                     chunk_queue.put({"status": "done"})
                 finally:
-                    stop_event.set()  # 작업 완료 신호
+                    stop_event.set()
             
             # 비동기 처리 실행
             loop.run_until_complete(stream_processor())
         
         # 스레드 시작
-        import threading
         thread = threading.Thread(target=worker)
         thread.daemon = True
         thread.start()
