@@ -283,6 +283,10 @@ class EventViewSet(viewsets.ViewSet):
             new_data = request.data.copy()
             new_data['start_date'] = event_date_str  # 수정 대상 날짜로 설정
             
+            # # recurrence_rules이 요청에 없으면 원본 일정의 recurrence_rules 복사. 프론트엔드에서 대신 처리해줌
+            # if 'recurrence_rules' not in new_data:
+            #     new_data['recurrence_rules'] = event.recurrence_rules
+
             # 이벤트 기간 계산 (멀티데이 이벤트인 경우)
             if event.end_date:
                 duration = (event.end_date - event.start_date).days
@@ -301,10 +305,227 @@ class EventViewSet(viewsets.ViewSet):
             serializer = EventDetailSerializer(event, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
             serializer.save()
-            
+                
             return Response(serializer.data)
-        
+                
         return Response({"error": "잘못된 update_type 값입니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+    def _expand_recurring_event(self, event, start_date, end_date):
+        """
+        반복 일정에 대해 지정된 날짜 범위 내의 가상 인스턴스 생성
+        """
+        if not event.recurrence_rules:
+            return []
+        
+        recurrence_rules = event.recurrence_rules
+        pattern = recurrence_rules.get('pattern')
+        until_date_str = recurrence_rules.get('until')
+        exceptions = recurrence_rules.get('exceptions', [])
+        
+        # 종료일이 지정되어 있지 않은 경우 기본값 설정 (1년)
+        if until_date_str:
+            until_date = datetime.strptime(until_date_str, '%Y-%m-%d').date()
+        else:
+            until_date = event.start_date + timedelta(days=365)
+        
+        # 조회 범위의 종료일이 반복 종료일보다 이후인 경우 종료일로 제한
+        end_date = min(end_date, until_date)
+        
+        # 조회 범위가 반복 시작일보다 이전이거나, 반복 종료일보다 이후인 경우 빈 리스트 반환
+        if end_date < event.start_date or start_date > until_date:
+            return []
+        
+        # 멀티데이 이벤트인 경우 일정 기간 계산
+        event_duration = None
+        if event.end_date:
+            event_duration = (event.end_date - event.start_date).days
+        
+        # 결과 리스트 준비
+        virtual_instances = []
+        
+        # 첫 날짜가 조회 범위 내에 있으면 원본 이벤트 추가
+        if start_date <= event.start_date <= end_date:
+            if event.start_date.strftime('%Y-%m-%d') not in exceptions:
+                virtual_instances.append(event)
+        
+        # 패턴별 처리
+        if pattern == 'daily':
+            # 매일 반복
+            current_date = event.start_date + timedelta(days=1)  # 원본 다음날부터 시작
+            
+            while current_date <= end_date:
+                if current_date < start_date:
+                    current_date += timedelta(days=1)
+                    continue
+                    
+                # 예외 날짜 확인
+                if current_date.strftime('%Y-%m-%d') in exceptions:
+                    current_date += timedelta(days=1)
+                    continue
+                
+                # 가상 인스턴스 생성
+                instance = self._create_virtual_instance(
+                    event, current_date, event_duration
+                )
+                virtual_instances.append(instance)
+                
+                current_date += timedelta(days=1)
+                
+        elif pattern == 'weekly':
+            # 매주 반복 (같은 요일)
+            current_date = event.start_date + timedelta(days=7)  # 1주일 후부터 시작
+            
+            while current_date <= end_date:
+                if current_date < start_date:
+                    current_date += timedelta(days=7)
+                    continue
+                    
+                # 예외 날짜 확인
+                if current_date.strftime('%Y-%m-%d') in exceptions:
+                    current_date += timedelta(days=7)
+                    continue
+                
+                # 가상 인스턴스 생성
+                instance = self._create_virtual_instance(
+                    event, current_date, event_duration
+                )
+                virtual_instances.append(instance)
+                
+                current_date += timedelta(days=7)
+                
+        elif pattern == 'monthly':
+            # 매월 반복 (같은 날짜)
+            day_of_month = event.start_date.day
+            
+            # 첫 번째 반복일 계산 (다음 달 같은 날짜)
+            if event.start_date.month == 12:
+                next_month = 1
+                next_year = event.start_date.year + 1
+            else:
+                next_month = event.start_date.month + 1
+                next_year = event.start_date.year
+            
+            last_day = calendar.monthrange(next_year, next_month)[1]
+            actual_day = min(day_of_month, last_day)
+            
+            try:
+                current_date = date(next_year, next_month, actual_day)
+            except ValueError:
+                # 유효하지 않은 날짜인 경우 다음 달 1일
+                current_date = date(next_year, next_month, 1)
+            
+            # 매월 반복 계산
+            while current_date <= end_date:
+                if current_date < start_date:
+                    # 다음 달로 이동
+                    if current_date.month == 12:
+                        next_month = 1
+                        next_year = current_date.year + 1
+                    else:
+                        next_month = current_date.month + 1
+                        next_year = current_date.year
+                    
+                    last_day = calendar.monthrange(next_year, next_month)[1]
+                    actual_day = min(day_of_month, last_day)
+                    
+                    try:
+                        current_date = date(next_year, next_month, actual_day)
+                    except ValueError:
+                        current_date = date(next_year, next_month, 1)
+                    continue
+                
+                # 예외 날짜 확인
+                if current_date.strftime('%Y-%m-%d') in exceptions:
+                    # 다음 달로 이동
+                    if current_date.month == 12:
+                        next_month = 1
+                        next_year = current_date.year + 1
+                    else:
+                        next_month = current_date.month + 1
+                        next_year = current_date.year
+                    
+                    last_day = calendar.monthrange(next_year, next_month)[1]
+                    actual_day = min(day_of_month, last_day)
+                    
+                    try:
+                        current_date = date(next_year, next_month, actual_day)
+                    except ValueError:
+                        current_date = date(next_year, next_month, 1)
+                    continue
+                
+                # 가상 인스턴스 생성
+                instance = self._create_virtual_instance(
+                    event, current_date, event_duration
+                )
+                virtual_instances.append(instance)
+                
+                # 다음 달로 이동
+                if current_date.month == 12:
+                    next_month = 1
+                    next_year = current_date.year + 1
+                else:
+                    next_month = current_date.month + 1
+                    next_year = current_date.year
+                
+                last_day = calendar.monthrange(next_year, next_month)[1]
+                actual_day = min(day_of_month, last_day)
+                
+                try:
+                    current_date = date(next_year, next_month, actual_day)
+                except ValueError:
+                    current_date = date(next_year, next_month, 1)
+                
+        elif pattern == 'yearly':
+            # 매년 반복 (같은 월, 같은 날)
+            origin_month = event.start_date.month
+            origin_day = event.start_date.day
+            
+            # 다음 해부터 시작
+            for year in range(event.start_date.year + 1, end_date.year + 1):
+                try:
+                    current_date = date(year, origin_month, origin_day)
+                    
+                    if current_date > end_date:
+                        break
+                        
+                    if current_date < start_date:
+                        continue
+                    
+                    # 예외 날짜 확인
+                    if current_date.strftime('%Y-%m-%d') in exceptions:
+                        continue
+                    
+                    # 가상 인스턴스 생성
+                    instance = self._create_virtual_instance(
+                        event, current_date, event_duration
+                    )
+                    virtual_instances.append(instance)
+                    
+                except ValueError:
+                    # 윤년 관련 문제 (2월 29일 등) - 건너뜀
+                    continue
+        
+        return virtual_instances
+
+    def _create_virtual_instance(self, event, new_date, duration=None):
+        """
+        반복 일정의 가상 인스턴스를 생성합니다.
+        """
+        # 이벤트 객체 복사 (얕은 복사)
+        instance = copy.copy(event)
+        
+        # 가상 인스턴스임을 표시하는 속성 추가
+        instance._is_virtual = True
+        instance._original_event_id = event.event_id
+        
+        # 날짜 설정
+        instance.start_date = new_date
+        if duration is not None:
+            instance.end_date = new_date + timedelta(days=duration)
+        else:
+            instance.end_date = None
+        
+        return instance
 
 class DailyConversationSummaryFilter(filters.FilterSet):
     start_date = filters.DateFilter(field_name='summary_date', lookup_expr='gte')

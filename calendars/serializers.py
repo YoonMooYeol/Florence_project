@@ -64,7 +64,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
         end_date = data.get('end_date')
         
         if end_date and start_date > end_date:
-            raise serializers.ValidationError({"end_date": "종료 날짜는 시작 날짜보다 같거나 이후여야 합니다."})
+            raise serializers.ValidationError({"end_date": "종료 날짜는 시작 날짜 이후여야 합니다."})
         
         return data
 
