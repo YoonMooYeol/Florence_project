@@ -1168,3 +1168,44 @@ class DeleteAccountView(APIView):
         logout(request)
 
         return Response({"message": "탈퇴가 완료되었습니다. 다음에 또 방문해주세요 ☺️"}, status=status.HTTP_200_OK)
+
+
+class CheckUsernameDuplicateView(APIView):
+    permission_classes = [AllowAny]
+    """아이디 중복 확인 API"""
+
+    def post(self, request, *args, **kwargs):
+        username = request.data.get('username', None)
+
+        if username and User.objects.filter(username=username).exists():
+            return Response({"username": "이미 사용 중인 아이디입니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"message": "사용 가능한 아이디입니다."}, status=status.HTTP_200_OK)
+
+
+class CheckEmailDuplicateView(APIView):
+    permission_classes = [AllowAny]
+    """이메일 중복 확인 API"""
+
+    def post(self, request, *args, **kwargs):
+        email = request.data.get('email', None)
+
+        if email and User.objects.filter(email=email).exists():
+            return Response({"email": "이미 사용 중인 이메일입니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"message": "사용 가능한 이메일입니다."}, status=status.HTTP_200_OK)
+
+
+# views.py
+
+class CheckPhoneNumberDuplicateView(APIView):
+    permission_classes = [AllowAny]
+    """전화번호 중복 확인 API"""
+
+    def post(self, request, *args, **kwargs):
+        phone_number = request.data.get('phone_number', None)
+
+        if phone_number and User.objects.filter(phone_number=phone_number).exists():
+            return Response({"phone_number": "이미 사용 중인 전화번호입니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"message": "사용 가능한 전화번호입니다."}, status=status.HTTP_200_OK)
