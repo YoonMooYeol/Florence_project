@@ -203,7 +203,7 @@ class PregnancyContext:
     
     def _update_conversation_summary(self):
         """대화 내역 요약 업데이트"""
-        # 최근 3개 대화만 유지
+        # 최근 5개 대화만 유지
         recent_conversations = self.conversation_history[-5:] if len(self.conversation_history) > 3 else self.conversation_history
         
         summary = "이전 대화 내용:\n"
@@ -329,10 +329,14 @@ query_classifier_instructions = """
 3. nutrition: 영양, 식단, 음식 추천 등에 관한 질문
 4. exercise: 임신 중 운동, 신체 활동 등에 관한 질문
 5. emotional: 감정적 지원, 스트레스, 불안, 심리 상태 등에 관한 질문
-6. general: 위 카테고리에 속하지 않는 일반적인 질문
+6. calendar: 일정 등록에 관한 질문.
+7. general: 위 카테고리에 속하지 않는 일반적인 질문.
 
+과거 질문내역을 바탕으로도 선택해야합니다.
 또한 응답에 대한 검증이 필요한지 판단하세요. 의학 정보, 정책 정보, 영양 정보 등 
 사실에 기반한 중요한 정보를 제공해야 하는 경우에는 검증이 필요합니다.
+
+JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
 
 주어진 질문에 가장 적합한 카테고리와 검증 필요 여부를 결정하세요.
 """
@@ -342,6 +346,9 @@ general_agent_base_instructions = """
 당신은 일반적인 대화를 제공하는 도우미입니다.
 항상 친절한 말로 답변하세요.
 의학적인 질문이나 정부 지원 정책에 관한 구체적인 질문은 다른 전문 에이전트에게 넘기세요.
+
+JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
+
 모든 답변은 한국어로 제공하세요.
 """
 
@@ -352,6 +359,9 @@ medical_agent_base_instructions = """
 포함되어야 할 정보는 태아발달, 추가 칼로리, 운동, 영양제, 주차별 받아야할 병원진료 등등을 제공하세요. 제공된 정보는 또 제공될 필요는 없지만 필요하다면 제공하세요.
 항상 "이 정보는 일반적인 안내이며, 구체적인 의료 조언은 의사와 상담하세요"라는 면책 조항을 포함하세요.
 고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
+
+JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
+
 모든 답변은 한국어로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 정보를 활용하세요.
 """
@@ -362,6 +372,8 @@ data_verification_agent_base_instructions = """
 신뢰할 수 있는 의학 지식을 바탕으로 정보의 정확성을 0.0부터 1.0 사이의 점수로 평가하세요.
 정확하지 않은 정보가 있다면 해당 부분을 지적하고 수정된 정보를 제공하세요.
 
+JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
+
 모든 평가는 객관적이고 과학적인 근거에 기반해야 합니다.
 """
 
@@ -370,6 +382,7 @@ policy_agent_base_instructions = """
 검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
 맘편한 임신 원스톱 서비스같은 정보를 제공하세요. 그리고 더 많은 정보를 웹검색을 통해 제공하세요. 꼭 지원할수있는 url과 연락처를 제공하세요.
+JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
 """
 
 nutrition_agent_base_instructions = """
@@ -377,7 +390,7 @@ nutrition_agent_base_instructions = """
 검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 임신 주차에 따라 필요한 영양소, 권장 식품, 주의해야 할 식품 등에 대한 정보를 제공하세요.
 모든 답변은 한국어로 제공하세요.
-FileSearchTool에서 가져온 임신 주차별 영양 정보를 활용하세요.
+FileSearchTool에서 가져온 임신 주차별 영양 정보를 활용하세요.{'title': '산부인과', 'start_date': '2025-04-01', 'start_time': '19:00', 'event_type': 'appointment'}이런 JSON 데이터는 내부 도구에만 전달하세요.
 """
 
 exercise_agent_base_instructions = """
@@ -388,6 +401,7 @@ exercise_agent_base_instructions = """
 고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
 모든 답변은 한국어로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 운동 정보를 활용하세요.
+{'title': '산부인과', 'start_date': '2025-04-01', 'start_time': '19:00', 'event_type': 'appointment'}이런 JSON 데이터는 내부 도구에만 전달하세요.
 """
 
 emotional_agent_base_instructions = """
@@ -398,22 +412,104 @@ emotional_agent_base_instructions = """
 고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
 모든 답변은 한국어로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 감정 정보를 활용하세요.
+JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
 """
 
 calendar_agent_base_instructions = """
-당신은 사용자의 요청을 분석하여 캘린더에 일정을 등록하는 비서입니다.
+# 일정 등록 에이전트 프롬프트
 
-**절대 규칙 (매우 중요):**
-1. JSON, 코드, 기술적 데이터를 절대 사용자에게 보여주지 마세요.
-2. 내부 처리용 데이터는 사용자에게 절대 노출하지 마세요.
-3. CalendarTool에 데이터를 전달할 때는 반드시 도구의 API 형식으로만 전달하고, 
-   이 전달 과정을 사용자에게 설명하거나 보여주지 마세요.
-4. 사용자에게는 일반 대화 문장만 사용하세요.
-5. 일정이 등록되면 "일정이 등록되었습니다"와 같은 간단한 확인 메시지만 전달하세요.
+## 목적
+사용자의 일정 등록 요청을 정확하고 효율적으로 처리합니다.
 
-사용자의 메시지에서 일정 제목, 날짜, 시간 등을 추출하여 CalendarTool로 등록하세요.
+## 주요 기능
+1. 사용자의 자연어 입력을 구조화된 일정 정보로 변환
+2. 필수 정보 및 선택적 정보 식별
+3. 모호한 정보에 대한 추가 질의
 
-중요: 사용자에게 직접 JSON 객체를 표시하지 마세요. JSON 데이터는 내부 도구에만 전달하세요.
+## 처리 가이드라인
+
+### 필수 정보
+- 제목 (title): 일정의 핵심을 명확하게 표현
+- 시작 날짜 (start_date): 반드시 포함되어야 함
+
+### 일정 및 시간 정보
+- 설명 (description): 추가 세부사항
+- 시작 시간 (start_time)
+- 종료 시간 (end_time)
+- 시작 날짜 (start_date)
+- 종료 날짜 (end_date)
+
+### 이벤트 타입 분류
+- appointment: 공식적인 약속, 미팅
+- medication: 약 복용 일정
+- symptom: 증상 추적
+- exercise: 운동 계획
+- other: 위 카테고리에 해당하지 않는 일정
+
+### 이벤트 컬러 가이드
+    '#FFD600', '노랑',
+    '#FF6B6B', '빨강',
+    '#4ECDC4', '청록',
+    '#45B7D1', '하늘',
+    '#96CEB4', '민트',
+    '#FFEEAD', '연한 노랑',
+    '#D4A5A5', '연한 빨강',
+    '#9B59B6', '보라',
+    '#3498DB', '파랑',
+    '#2ECC71', '초록'
+
+### recurrence_rules json 형식
+- 반복 규칙 예시: 
+    {
+        "pattern": "daily", #/weekly/monthly/yearly 
+        "until": "2024-12-31", # 반복 종료 날짜
+        "exceptions": ["2024-06-15", "2024-07-01", "2024-08-10"] # 반복 예외 날짜
+    }
+
+## 대화 흐름 예시
+
+### 시나리오 1: 명확한 일정
+사용자: "다음 주 수요일 오후 3시에 치과 예약"
+기대 출력:
+```json
+{
+    "title": "치과 예약",
+    "start_date": "2024-04-03",
+    "start_time": "15:00",
+    "event_type": "appointment",
+    "event_color": "#45B7D1"
+}
+```
+
+### 시나리오 2: 추가 정보 필요
+사용자: "다음 주 운동"
+에이전트 대응: 
+"어떤 종류의 운동인가요? 시간과 장소도 알려주세요."
+
+### 시나리오 3: 복합 일정
+사용자: "다음 주 화,목요일 아침 조깅"
+기대 출력:
+```json
+{
+    "title": "조깅",
+    "start_date": "2024-04-02",
+    "end_date": "2024-04-04",
+    "start_time": "06:00",
+    "event_type": "exercise",
+    "event_color": "#2ECC71"
+}
+```
+
+## 핵심 원칙
+1. 사용자 의도 정확히 파악
+2. 누락된 정보는 추가 질문
+3. 모호한 정보는 명확화
+4. 일관된 데이터 형식 유지
+
+## 오류 처리
+- 필수 정보(제목, 날짜) 누락 시 등록 거부
+- 날짜/시간 형식 오류 시 사용자에게 확인
+- 부적절한 입력에 대해 친절하고 명확한 안내
 """
 
 
@@ -439,7 +535,7 @@ class CalendarTool(FunctionTool):
     
     def __init__(self):
         tool_name = "CalendarTool"
-        tool_description = "캘린더에 새 일정을 등록합니다. 일정 제목과 시작 날짜(YYYY-MM-DD)는 필수입니다."
+        tool_description = "캘린더에 새 일정을 등록합니다. 일정 제목과 시작 날짜(YYYY-MM-DD)는 필수입니다.{'title': '산부인과', 'start_date': '2025-04-01', 'start_time': '19:00', 'event_type': 'appointment'}이런 JSON 데이터는 내부 도구에만 전달하세요."
 
         # Pydantic 모델에서 스키마 생성
         tool_params_schema = CalendarEventInput.model_json_schema()
@@ -534,12 +630,14 @@ class CalendarTool(FunctionTool):
                 print(f"CalendarTool API 응답 상태: {response.status_code}")
                 response.raise_for_status()
 
-            # API 응답을 JSON으로 변환하여 결과 메시지 생성
-            result = response.json()
-            start_time_str = f" {result.get('start_time')}" if result.get('start_time') else ""
-            success_msg = f"✅ '{result.get('title', '(제목 없음)')}' 일정이 {result.get('start_date', '(날짜 없음)')}{start_time_str}에 성공적으로 등록되었습니다!"
-            print(f"CalendarTool 성공: {success_msg}")
-            return success_msg
+            if response.status_code == 201:
+                result = f"{response.json().get('title')} 일정이 등록되었습니다."
+            else:
+                result = "일정 등록에 실패했습니다."
+            
+            
+            print(f"CalendarTool 성공: {result}")
+            return result
 
         except httpx.TimeoutException:
             error_msg = f"일정 등록 실패: 서버 연결 시간 초과"
@@ -780,26 +878,22 @@ class OpenAIAgentService:
             # 일정 관련 키워드 탐지
             calendar_keywords = ["일정", "등록", "캘린더", "약속", "기록", "메모", "리마인더", "알림", "추가", "예약"]
             
-            if any(keyword in query_text for keyword in calendar_keywords):
-                query_type = "calendar"
-                needs_verification = False
+            # 분류 결과에 따라 바로 적절한 에이전트 선택
+            if query_type == "medical":
+                agent_to_use = self.get_medical_agent(context)
+            elif query_type == "policy":
+                agent_to_use = self.get_policy_agent(context)
+            elif query_type == "nutrition":
+                agent_to_use = self.get_nutrition_agent(context)
+            elif query_type == "exercise":
+                agent_to_use = self.get_exercise_agent(context)
+            elif query_type == "emotional":
+                agent_to_use = self.get_emotional_support_agent(context)
+            elif query_type == "calendar":
                 agent_to_use = self.get_calendar_agent(context)
-                print(f"[{time.time() - run_start_time:.2f}s] 캘린더 에이전트 선택됨")
-            else:
-                # 분류 결과에 따라 바로 적절한 에이전트 선택
-                if query_type == "medical":
-                    agent_to_use = self.get_medical_agent(context)
-                elif query_type == "policy":
-                    agent_to_use = self.get_policy_agent(context)
-                elif query_type == "nutrition":
-                    agent_to_use = self.get_nutrition_agent(context)
-                elif query_type == "exercise":
-                    agent_to_use = self.get_exercise_agent(context)
-                elif query_type == "emotional":
-                    agent_to_use = self.get_emotional_support_agent(context)
-                else:  # general 또는 기타
-                    agent_to_use = self.get_general_agent(context)
-                    print("general 또는 기타 에이전트 선택됨")
+            else:  # general 또는 기타
+                agent_to_use = self.get_general_agent(context)
+                print("general 또는 기타 에이전트 선택됨")
 
             # 에이전트 선택 지점
             print(f"[{time.time() - run_start_time:.2f}s] {query_type} 에이전트 선택됨")
@@ -813,7 +907,7 @@ class OpenAIAgentService:
                         context=context,  # PregnancyContext 객체 직접 전달
                         hooks=hooks
                     )
-                    
+                    print(f"스트리밍 결과: {result}")
                     # 스트리밍 응답과 함께 needs_verification 정보 전달
                     result.needs_verification = needs_verification
                     result.query_type = query_type

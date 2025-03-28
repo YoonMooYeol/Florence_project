@@ -229,7 +229,7 @@ class OpenAIAgentStreamView(APIView):
             
             async def stream_processor():
                 try:
-                    # 필터링 변수 미리 정의 (중요!)
+                    # JSON 필터링 변수 다시 추가
                     filtering_json = False
                     json_buffer = ""
                     
@@ -238,7 +238,7 @@ class OpenAIAgentStreamView(APIView):
                         query_text=query_text,
                         user_id=user_id,
                         thread_id=request.data.get("thread_id"),
-                        auth_token=auth_token,  # 인증 토큰 전달
+                        auth_token=auth_token,
                         pregnancy_week=request.data.get("pregnancy_week"),
                         baby_name=request.data.get("baby_name"),
                         stream=True
@@ -254,43 +254,36 @@ class OpenAIAgentStreamView(APIView):
                             delta = event.data.delta
                             accumulated_response += delta
                             
-                            # JSON 패턴 감지 로직
+                            # JSON 필터링 로직 복원
                             if not filtering_json:
-                                # JSON 객체 시작 패턴 확인
-                                if delta.strip().startswith('{') or (delta.strip().startswith('"') and accumulated_response.rstrip().endswith('{')):
-                                    print("JSON 패턴 감지 - 필터링 시작")
+                                # JSON 시작 패턴 확인 (중괄호로 시작하거나 따옴표+중괄호 패턴)
+                                if (delta.strip().startswith('{') or 
+                                    delta.strip().startswith('"') and accumulated_response.rstrip().endswith('{')):
+                                    # JSON 필터링 시작
                                     filtering_json = True
                                     json_buffer = delta
                                     continue
-                                # 정상 텍스트면 전송
+                                # 정상 텍스트는 전송
                                 chunk_queue.put({"delta": delta, "complete": False})
                             else:
                                 # 필터링 중인 경우
                                 json_buffer += delta
-                                # JSON 객체 종료 확인
+                                # JSON 종료 확인
                                 if '}' in delta:
-                                    print(f"JSON 필터링 완료: {json_buffer[:50]}...")
                                     filtering_json = False
                                     json_buffer = ""
-                                    # 필터링된 JSON 대신 사용자에게 보여줄 메시지 전송
-                                    chunk_queue.put({"delta": " ", "complete": False})
+                                    # 필터링된 JSON 대신 공백 전송
+                                    chunk_queue.put({"delta": "", "complete": False})
+                                    continue
                         
+                        # 기존 도구 이벤트 처리는 유지
                         elif event.type == "tool_start":
                             chunk_queue.put({"tool": event.data.name, "status": "start"})
+                        
                         elif event.type == "tool_end":
-                            # 도구 결과에서 JSON 필터링
-                            tool_result = str(event.data.result)
-                            if tool_result.strip().startswith('{') and tool_result.strip().endswith('}'):
-                                try:
-                                    # JSON인지 검증
-                                    json.loads(tool_result)
-                                    print("도구 결과에서 JSON 감지 - 필터링")
-                                    chunk_queue.put({"tool": event.data.name, "status": "end", "result": "일정이 등록되었습니다."})
-                                except json.JSONDecodeError:
-                                    # JSON이 아니면 그대로 전송
-                                    chunk_queue.put({"tool": event.data.name, "status": "end", "result": tool_result})
-                            else:
-                                chunk_queue.put({"tool": event.data.name, "status": "end", "result": tool_result})
+                            chunk_queue.put({"tool": event.data.name, "status": "end", "result": event.data.result})
+                            print(f"도구 종료: {event.data.name}, 결과: {event.data.result}")
+                        
                         elif event.type == "handoff":
                             chunk_queue.put({
                                 "handoff": True, 
@@ -298,13 +291,16 @@ class OpenAIAgentStreamView(APIView):
                                 "to": event.data.to_agent
                             })
                     
+                    # 전체 응답 보내기 전에 필터링
+                    filtered_response = re.sub(r'```(?:json)?\s*\{[\s\S]*?\}\s*```', '', accumulated_response)
+                    
                     # 대화 저장
                     context = PregnancyContext(user_id=user_id, thread_id=request.data.get("thread_id"))
-                    await context.save_to_db_async(query_text, accumulated_response)
+                    await context.save_to_db_async(query_text, filtered_response)
                     
                     # 검증이 필요한 경우 스트리밍 후 검증 수행
                     if hasattr(stream_result, 'needs_verification') and stream_result.needs_verification:
-                        print(f"검증 필요: 응답 길이 = {len(accumulated_response)} 글자")
+                        print(f"검증 필요: 응답 길이 = {len(filtered_response)} 글자")
                         # 검증 진행 중임을 알림
                         chunk_queue.put({"verification_status": "start"})
                         
@@ -315,7 +311,7 @@ class OpenAIAgentStreamView(APIView):
                             
                             verification_result = await Runner.run(
                                 verification_agent,
-                                accumulated_response,
+                                filtered_response,
                                 context=context
                             )
                             print("검증 실행 완료")
@@ -347,18 +343,16 @@ class OpenAIAgentStreamView(APIView):
                     
                     # 완료 메시지
                     chunk_queue.put({
-                        "response": accumulated_response,
+                        "response": filtered_response,
                         "complete": True
                     })
                     chunk_queue.put({"status": "done"})
                 except Exception as e:
                     print(f"스트림 프로세서 오류: {str(e)}")
-                    import traceback
-                    traceback.print_exc()
                     chunk_queue.put({"error": str(e)})
                     chunk_queue.put({"status": "done"})
                 finally:
-                    stop_event.set()  # 작업 완료 신호
+                    stop_event.set()
             
             # 비동기 처리 실행
             loop.run_until_complete(stream_processor())
