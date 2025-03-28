@@ -198,100 +198,6 @@ class TokenRefreshView(JWTTokenRefreshView):
         )
 
 
-class PasswordResetViewSet(viewsets.GenericViewSet):
-    """ 비밀번호 재설정 코드 전송 뷰셋 """
-    permission_classes = [AllowAny]
-    serializer_class = PasswordResetSerializer
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        email = serializer.validated_data['email']
-
-
-        # 사용자 확인
-        user = User.objects.get(email=email)
-
-        if not user:
-            return Response({"success": False, "message": "해당 이메일의 사용자가 없습니다."},
-                            status=status.HTTP_404_NOT_FOUND)
-
-        # 랜덤 코드 생성
-        code = str(random.randint(100000, 999999))
-        user.send_reset_code(code, end_minutes=10)
-
-        # 이메일 전송
-        try:
-            self.send_mail(email, code)
-            return Response({"success": True, "message": "인증 코드 전송 성공"},
-                            status=status.HTTP_200_OK)
-        except ValueError:
-            return Response({"success": False, "message": "정확한 이메일 주소를 입력해 주세요."},
-                            status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({"success": False, "message": f"이메일 전송 중 오류가 발생했습니다: {str(e)}"},
-                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def send_mail(self, recipient_email, code, html_content=None):
-        """ 이메일 전송 """
-        # 이메일 주소 형식 확인
-        if not re.match(r"[^@]+@[^@]+\.[^@]+", recipient_email):
-            raise ValueError("정확한 이메일 주소를 입력해 주세요.")
-
-        domain = recipient_email.split('@')[-1].lower()
-        config = settings.SMTP_CONFIG.get(domain, settings.EMAIL_CONFIG)
-
-        try:
-            connection = get_connection(
-
-                # 이메일 설정을 settings에서 가져오기
-                host=config['HOST'],
-                use_tls=config['USE_TLS'],
-                port=config['PORT'],
-                username=config['HOST_USER'],
-                password=config['HOST_PASSWORD'],
-
-            )
-            # EmailMessage 대신 EmailMultiAlternatives 사용
-            email = EmailMultiAlternatives(
-                subject="[누리달] 💡비밀번호 재설정 인증 코드 안내 💡",
-                body=f"안녕하세요\n비밀번호 재설정 인증코드는 [{code}]입니다. 10분 안에 인증을 완료해주세요.",
-                from_email=config['HOST_USER'],
-                to=[recipient_email],
-                connection=connection,
-            )
-
-            # html_content가 제공된 경우에만 HTML 콘텐츠 추가
-            if html_content:
-                email.attach_alternative(html_content, "text/html")  # HTML로 변환
-            else:
-                # 기본 HTML 콘텐츠 생성
-                default_html = f"""
-                <html>
-                <body>
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                        <h2 style="color: #333;">누리달 비밀번호 재설정</h2>
-                        <p>안녕하세요,</p>
-                        <p>비밀번호 재설정 인증코드는 다음과 같습니다:</p>
-                        <div style="background-color: #f7f7f7; padding: 15px; font-size: 24px; font-weight: bold; text-align: center; margin: 20px 0; border-radius: 5px;">
-                            {code}
-                        </div>
-                        <p>이 코드는 10분 후에 만료됩니다.</p>
-                        <p>감사합니다,<br>누리달 팀</p>
-                    </div>
-                </body>
-                </html>
-                """
-                email.attach_alternative(default_html, "text/html")
-
-            # 이메일 전송
-            email.send(fail_silently=False)
-            return {"success": True, "message": "이메일이 성공적으로 전송되었습니다."}
-
-        except Exception as e:
-            raise Exception(f"이메일 전송 중 오류 발생: {str(e)}")
-
-
 class PasswordResetConfirmViewSet(viewsets.GenericViewSet):
     """ 비밀번호 재설정 완료 뷰셋 """
     permission_classes = [AllowAny]
@@ -337,13 +243,17 @@ class PasswordResetCheckViewSet(viewsets.GenericViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         code = serializer.validated_data['reset_code']
-
+        print(f"[DEBUG] 입력된 인증 코드: {code}")
         # 코드로 사용자 탐색
         user = User.objects.filter(reset_code=code).first()  # User 객체 조회
         if not user:
             return Response({"success": False, "message": "잘못된 인증 코드입니다."},
                             status=status.HTTP_400_BAD_REQUEST)
+        print(f"[DEBUG] DB에 저장된 reset_code: {user.reset_code}")
 
+        # 캐시에서 인증 코드 가져오기
+        cached_code = EmailUtils.get_verification_code(user.email)
+        print(f"[DEBUG] 캐시에 저장된 코드: {cached_code}")
         try:
             # 인증 코드 검증
             EmailUtils.verify_code(user.email, code)
@@ -351,6 +261,7 @@ class PasswordResetCheckViewSet(viewsets.GenericViewSet):
                             status=status.HTTP_200_OK)
 
         except ValueError as e:
+            print(f"[DEBUG] 인증 코드 검증 실패: {str(e)}")
             return Response({"success": False, "message": str(e)},
                             status=status.HTTP_400_BAD_REQUEST)
 

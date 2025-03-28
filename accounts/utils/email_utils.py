@@ -5,7 +5,7 @@ from django.core.cache import cache
 from django.core.mail import EmailMessage
 from django.conf import settings
 
-from accounts.models import EmailVerification
+from accounts.models import EmailVerification, User
 
 
 class EmailUtils:
@@ -39,13 +39,29 @@ class EmailUtils:
 
     @staticmethod
     def verify_code(email, input_code):
-        """ 입력된 인증 코드 확인 """
+        """ 입력된 인증 코드 확인 후, 만료 시 DB에서 삭제 """
         stored_code = EmailUtils.get_verification_code(email)
+
+        # 🔹 캐시에서 코드가 만료된 경우
         if not stored_code:
+            # ✅ DB에서도 코드 삭제 (보안 강화를 위해)
+            user = User.objects.filter(email=email).first()
+            if user and user.reset_code:
+                user.reset_code = None
+                user.reset_code_expires_at = None
+                user.save()
             raise ValueError(EmailUtils.CODE_EXPIRED_ERROR)
 
+        # 🔹 입력된 코드가 일치하지 않는 경우
         if stored_code != input_code:
             raise ValueError(EmailUtils.CODE_INVALID_ERROR)
+
+        # 🔹 인증 성공 시, DB에서 코드 삭제 (재사용 방지)
+        user = User.objects.filter(email=email).first()
+        if user:
+            user.reset_code = None
+            user.reset_code_expires_at = None
+            user.save()
 
         return True
 
@@ -108,6 +124,12 @@ class EmailUtils:
 
         code = EmailUtils.generate_verification_code()
         EmailUtils.save_verification_code(email, code)
+        print(f"[DEBUG] send_password_reset_email()에서 저장한 코드: {EmailUtils.get_verification_code(email)}")
+
+        user = User.objects.filter(email=email).first()
+        if user:
+            user.reset_code = code
+            user.save()
 
         subject = "[누리달] 💡비밀번호 재설정 인증 코드 안내 💡"
 
