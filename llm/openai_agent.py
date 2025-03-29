@@ -1,11 +1,14 @@
 import os
 from dotenv import load_dotenv
 from typing import List, Dict, Any, Optional, Union
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 import time
-
+import re
+import httpx
+import json
+from datetime import date
 from agents import Agent, Runner, WebSearchTool, FileSearchTool, trace, handoff, input_guardrail, output_guardrail, GuardrailFunctionOutput
-from agents import RunHooks, RunContextWrapper, Usage, Tool
+from agents import RunHooks, RunContextWrapper, Usage, Tool, InputGuardrailTripwireTriggered, FunctionTool
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -19,6 +22,16 @@ load_dotenv()
 model_name = os.getenv("LLM_MODEL") or "gpt-4o-mini"
 openai_api_key = os.getenv("OPENAI_API_KEY")
 vector_store_id = os.getenv("VECTOR_STORE_ID")  # 벡터 스토어 ID
+
+
+def get_current_date():
+    """
+    현재 날짜를 'YYYY-MM-DD' 형식으로 반환
+    
+    Returns:
+        str: 현재 날짜 (예: 2024-03-28)
+    """
+    return date.today().strftime('%Y-%m-%d')
 
 # 라이프사이클 추적을 위한 훅 클래스
 class PregnancyAgentHooks(RunHooks):
@@ -95,7 +108,8 @@ class QueryClassification(BaseModel):
 class PregnancyContext:
     """임신 관련 정보를 저장하는 컨텍스트 클래스"""
     
-    def __init__(self, user_id=None, thread_id=None):
+    def __init__(self, user_id=None, thread_id=None, auth_token=None):
+        self.auth_token = auth_token  # 명시적 필드로 추가
         self.pregnancy_week: Optional[int] = None
         self.user_info: Dict[str, Any] = {}
         self.conversation_history: List[Dict[str, Any]] = []
@@ -126,6 +140,8 @@ class PregnancyContext:
             "name": user.name,
             "is_pregnant": user.is_pregnant,
             "email": user.email,
+            "address": user.address,
+            
         }
 
         # 2) 임신 정보 불러오기
@@ -135,7 +151,8 @@ class PregnancyContext:
             self.user_info["pregnancy_id"] = str(pregnancy.pregnancy_id)
             self.user_info["due_date"] = pregnancy.due_date.isoformat() if pregnancy.due_date else None
             self.user_info["baby_name"] = pregnancy.baby_name
-
+            self.user_info["high_risk"] = pregnancy.high_risk
+            self.user_info["address"] = user.address
         # 3) 대화 로드 (최근 5개)
         from .models import ChatManager, LLMConversation
 
@@ -186,7 +203,7 @@ class PregnancyContext:
     
     def _update_conversation_summary(self):
         """대화 내역 요약 업데이트"""
-        # 최근 3개 대화만 유지
+        # 최근 5개 대화만 유지
         recent_conversations = self.conversation_history[-5:] if len(self.conversation_history) > 3 else self.conversation_history
         
         summary = "이전 대화 내용:\n"
@@ -247,7 +264,7 @@ class PregnancyContext:
 @input_guardrail
 def check_appropriate_content(context, agent, input):
     """부적절한 내용이 있는지 확인하는 가드레일"""
-    inappropriate_keywords = ["술", "담배", "약물", "다이어트", "살 빼기", "컴퓨터 코드"]
+    inappropriate_keywords = ["코드카타", '파이썬', '프로그래밍', '코드', '코드 짜줘', '프롬프트']
     
     if isinstance(input, str):
         for keyword in inappropriate_keywords:
@@ -312,10 +329,14 @@ query_classifier_instructions = """
 3. nutrition: 영양, 식단, 음식 추천 등에 관한 질문
 4. exercise: 임신 중 운동, 신체 활동 등에 관한 질문
 5. emotional: 감정적 지원, 스트레스, 불안, 심리 상태 등에 관한 질문
-6. general: 위 카테고리에 속하지 않는 일반적인 질문
+6. calendar: 일정 등록에 관한 질문.
+7. general: 위 카테고리에 속하지 않는 일반적인 질문.
 
+과거 질문내역을 바탕으로도 선택해야합니다.
 또한 응답에 대한 검증이 필요한지 판단하세요. 의학 정보, 정책 정보, 영양 정보 등 
 사실에 기반한 중요한 정보를 제공해야 하는 경우에는 검증이 필요합니다.
+
+JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
 
 주어진 질문에 가장 적합한 카테고리와 검증 필요 여부를 결정하세요.
 """
@@ -325,16 +346,23 @@ general_agent_base_instructions = """
 당신은 일반적인 대화를 제공하는 도우미입니다.
 항상 친절한 말로 답변하세요.
 의학적인 질문이나 정부 지원 정책에 관한 구체적인 질문은 다른 전문 에이전트에게 넘기세요.
+
+JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
+지역이 설정되어있지 않으면 한국지역한정으로 제공하세요.
 모든 답변은 한국어로 제공하세요.
 """
 
 medical_agent_base_instructions = """
 당신은 임신 주차별 의학 정보를 제공하는 전문가입니다.
 사용자의 임신 주차에 맞는 정확한 의학 정보를 제공하세요.
-검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
+병원찾기나 전문적인 의학지식질문에 검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 포함되어야 할 정보는 태아발달, 추가 칼로리, 운동, 영양제, 주차별 받아야할 병원진료 등등을 제공하세요. 제공된 정보는 또 제공될 필요는 없지만 필요하다면 제공하세요.
 항상 "이 정보는 일반적인 안내이며, 구체적인 의료 조언은 의사와 상담하세요"라는 면책 조항을 포함하세요.
-모든 답변은 한국어로 제공하세요.
+고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
+
+JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
+
+모든 답변은 한국지역한정, 한국어로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 정보를 활용하세요.
 """
 
@@ -343,14 +371,15 @@ data_verification_agent_base_instructions = """
 제공된 정보가 최신 의학 지식에 부합하는지, 과장되거나 잘못된 정보는 없는지 평가하세요.
 신뢰할 수 있는 의학 지식을 바탕으로 정보의 정확성을 0.0부터 1.0 사이의 점수로 평가하세요.
 정확하지 않은 정보가 있다면 해당 부분을 지적하고 수정된 정보를 제공하세요.
-
 모든 평가는 객관적이고 과학적인 근거에 기반해야 합니다.
 """
 
 policy_agent_base_instructions = """
 임산부에게 정부에서 지원하는 정보과 URL을 제공하는 전문가입니다.
 검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
+고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
 맘편한 임신 원스톱 서비스같은 정보를 제공하세요. 그리고 더 많은 정보를 웹검색을 통해 제공하세요. 꼭 지원할수있는 url과 연락처를 제공하세요.
+모든 답변은 한국어로 제공하세요.
 """
 
 nutrition_agent_base_instructions = """
@@ -359,6 +388,7 @@ nutrition_agent_base_instructions = """
 임신 주차에 따라 필요한 영양소, 권장 식품, 주의해야 할 식품 등에 대한 정보를 제공하세요.
 모든 답변은 한국어로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 영양 정보를 활용하세요.
+모든 답변은 한국어로 제공하세요.
 """
 
 exercise_agent_base_instructions = """
@@ -366,8 +396,9 @@ exercise_agent_base_instructions = """
 검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 임신 주차에 따른 적절한 운동 유형, 강도, 주의사항 등을 안내하세요.
 간단한 스트레칭이나 요가 동작도 설명할 수 있습니다.
-모든 답변은 한국어로 제공하세요.
+고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 운동 정보를 활용하세요.
+모든 답변은 한국어로 제공하세요.
 """
 
 emotional_agent_base_instructions = """
@@ -375,9 +406,268 @@ emotional_agent_base_instructions = """
 검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 또는 임신 중 흔히 겪는 감정 변화, 스트레스 관리법, 심리적 안정을 위한 조언을 웹검색을 통해 제공하세요.
 공감하는 태도로 따뜻한 지원을 제공하되, 전문적인 심리 상담이 필요한 경우는 전문가의 연락처를 권유하세요.
-모든 답변은 한국어로 제공하세요.
+고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 감정 정보를 활용하세요.
+모든 답변은 한국어로 제공하세요.
 """
+
+calendar_agent_base_instructions = """
+# 일정 등록 에이전트 프롬프트
+
+## 목적
+사용자의 일정 등록 요청을 정확하고 효율적으로 처리합니다.
+
+## 주요 기능
+1. 사용자의 자연어 입력을 구조화된 일정 정보로 변환
+2. 필수 정보 및 선택적 정보 식별
+3. 모호한 정보에 대한 추가 질의
+
+## 처리 가이드라인
+
+### 필수 정보
+- 제목 (title): 일정의 핵심을 명확하게 표현
+- 시작 날짜 (start_date): 반드시 포함되어야 함
+
+### 일정 및 시간 정보
+- 설명 (description): 추가 세부사항
+- 시작 시간 (start_time)
+- 종료 시간 (end_time)
+- 시작 날짜 (start_date)
+- 종료 날짜 (end_date)
+
+### 이벤트 타입 분류
+- appointment: 공식적인 약속, 미팅
+- medication: 약 복용 일정
+- symptom: 증상 추적
+- exercise: 운동 계획
+- other: 위 카테고리에 해당하지 않는 일정
+
+### 이벤트 컬러 가이드
+    '#FFD600', '노랑',
+    '#FF6B6B', '빨강',
+    '#4ECDC4', '청록',
+    '#45B7D1', '하늘',
+    '#96CEB4', '민트',
+    '#FFEEAD', '연한 노랑',
+    '#D4A5A5', '연한 빨강',
+    '#9B59B6', '보라',
+    '#3498DB', '파랑',
+    '#2ECC71', '초록'
+
+### recurrence_rules json 형식
+- 반복 규칙 예시: 
+    {
+        "pattern": "daily", #/weekly/monthly/yearly 
+        "until": "2024-12-31", # 반복 종료 날짜
+        "exceptions": ["2024-06-15", "2024-07-01", "2024-08-10"] # 반복 예외 날짜
+    }
+
+## 대화 흐름 예시
+
+### 시나리오 1: 명확한 일정
+사용자: "다음 주 수요일 오후 3시에 치과 예약"
+기대 출력:
+```json
+{
+    "title": "치과 예약",
+    "start_date": "2024-04-03",
+    "start_time": "15:00",
+    "event_type": "appointment",
+    "event_color": "#45B7D1"
+}
+```
+
+### 시나리오 2: 추가 정보 필요
+사용자: "다음 주 운동"
+에이전트 대응: 
+"어떤 종류의 운동인가요? 시간과 장소도 알려주세요."
+
+### 시나리오 3: 복합 일정
+사용자: "다음 주 화,목요일 아침 조깅"
+기대 출력:
+```json
+{
+    "title": "조깅",
+    "start_date": "2024-04-02",
+    "end_date": "2024-04-04",
+    "start_time": "06:00",
+    "event_type": "exercise",
+    "event_color": "#2ECC71"
+}
+```
+
+## 핵심 원칙
+1. 사용자 의도 정확히 파악
+2. 누락된 정보는 추가 질문
+3. 모호한 정보는 명확화
+4. 일관된 데이터 형식 유지
+5. 한국지역한정
+
+## 오류 처리
+- 필수 정보(제목, 날짜) 누락 시 등록 거부
+- 날짜/시간 형식 오류 시 사용자에게 확인
+- 부적절한 입력에 대해 친절하고 명확한 안내
+"""
+
+
+# 일정 등록에 필요한 데이터 모델
+class CalendarEventInput(BaseModel):
+    # 추가 속성 금지 설정
+    model_config = ConfigDict(extra='forbid')
+
+    # 필수 필드
+    title: str = Field(..., description="등록할 일정의 제목")
+    start_date: str = Field(..., description="일정 시작 날짜 (YYYY-MM-DD 형식)")
+
+    # 선택 필드
+    description: Optional[str] = Field(description="일정 상세 설명")
+    start_time: Optional[str] = Field(description="일정 시작 시간 (HH:MM 형식, 24시간제)")
+    end_date: Optional[str] = Field(description="일정 종료 날짜 (YYYY-MM-DD 형식)")
+    end_time: Optional[str] = Field(description="일정 종료 시간 (HH:MM 형식, 24시간제)")
+    event_type: Optional[str] = Field(description="일정 유형 (appointment, medication, symptom, exercise, personal, other)")
+    event_color: Optional[str] = Field(description="일정 색상 코드 (예: #FFD600)")
+
+class CalendarTool(FunctionTool):
+    """일정 등록을 위한 도구"""
+    
+    def __init__(self):
+        tool_name = "CalendarTool"
+        tool_description = "캘린더에 새 일정을 등록합니다. 일정 제목과 시작 날짜(YYYY-MM-DD)는 필수입니다.{'title': '산부인과', 'start_date': '2025-04-01', 'start_time': '19:00', 'event_type': 'appointment'}이런 JSON 데이터는 내부 도구에만 전달하세요."
+
+        # Pydantic 모델에서 스키마 생성
+        tool_params_schema = CalendarEventInput.model_json_schema()
+
+        super().__init__(
+            name=tool_name,
+            description=tool_description,
+            params_json_schema=tool_params_schema,
+            on_invoke_tool=self.run
+        )
+        
+        # 환경에 따른 API 엔드포인트 설정
+        if os.getenv("DJANGO_ENV") == "development":
+            self.api_endpoint = os.getenv("CALENDAR_API_ENDPOINT_DEV", "http://127.0.0.1:8000/v1/calendars/events/")
+        else:
+            self.api_endpoint = os.getenv("CALENDAR_API_ENDPOINT_PROD", "https://nooridal.click/v1/calendars/events/")
+        
+        print(f"CalendarTool initialized. API Endpoint: {self.api_endpoint}")
+
+    async def run(self, context: RunContextWrapper, tool_input: Union[CalendarEventInput, str, Dict]) -> str:
+        print(f"CalendarTool 실행 시작. 받은 tool_input 타입: {type(tool_input)}")
+        
+        # 인증 토큰 접근 - RunContextWrapper.context에서 가져오기
+        auth_token = None
+        
+        # context.context에 접근 (이것이 원래 전달한 객체)
+        if hasattr(context, 'context'):
+            original_context = context.context
+            print(f"원본 컨텍스트 타입: {type(original_context)}")
+            
+            # 딕셔너리인 경우
+            if isinstance(original_context, dict):
+                auth_token = original_context.get('auth_token')
+                print("딕셔너리 컨텍스트에서 auth_token 키로 접근")
+            
+            # PregnancyContext 객체인 경우
+            elif hasattr(original_context, 'auth_token'):
+                auth_token = original_context.auth_token
+                print("객체 컨텍스트에서 auth_token 속성으로 접근")
+        
+        # 헤더 설정
+        headers = {"Content-Type": "application/json"}
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+            print(f"토큰을 성공적으로 찾았습니다! (길이: {len(auth_token)})")
+        else:
+            print("인증 토큰을 찾을 수 없습니다. context.context에 없습니다.")
+            return "인증 토큰이 필요합니다. 로그인 상태를 확인해주세요."
+        
+        # 입력 변환 처리
+        instance: Optional[CalendarEventInput] = None
+        if isinstance(tool_input, CalendarEventInput):
+            instance = tool_input
+        elif isinstance(tool_input, dict):
+            try:
+                instance = CalendarEventInput(**tool_input)
+                print("참고: Dict에서 CalendarEventInput 인스턴스 생성됨.")
+            except Exception as e:
+                print(f"오류: Dict에서 CalendarEventInput 인스턴스 생성 실패: {e}")
+                return f"오류: 일정 정보를 처리하는 중 형식이 맞지 않아 실패했습니다."
+        elif isinstance(tool_input, str):
+            try:
+                json_match = re.search(r'\{.*\}', tool_input, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                    data = json.loads(json_str)
+                    instance = CalendarEventInput(**data)
+                    print("참고: JSON 문자열에서 CalendarEventInput 인스턴스 생성됨.")
+                else:
+                    print("오류: 입력 문자열에서 유효한 JSON 객체를 찾을 수 없음.")
+                    return "오류: 일정 정보를 인식할 수 없습니다."
+            except Exception as e:
+                print(f"오류: JSON 문자열 파싱 또는 CalendarEventInput 인스턴스 생성 실패: {e}")
+                return f"오류: 일정 정보 처리 중 오류가 발생했습니다."
+        else:
+            return f"오류: 죄송합니다, 일정 요청을 처리할 수 없습니다."
+
+        if not instance:
+            return "오류: 일정 정보를 처리하지 못했습니다."
+
+        payload = instance.model_dump(exclude_none=True)
+        print(f"CalendarTool Payload: {payload}")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self.api_endpoint,
+                    json=payload,
+                    headers=headers,
+                    timeout=15.0
+                )
+                print(f"CalendarTool API 응답 상태: {response.status_code}")
+                response.raise_for_status()
+
+            if response.status_code == 201:
+                result = f"{response.json().get('title')} 일정이 등록되었습니다."
+            else:
+                result = "일정 등록에 실패했습니다."
+            
+            
+            print(f"CalendarTool 성공: {result}")
+            return result
+
+        except httpx.TimeoutException:
+            error_msg = f"일정 등록 실패: 서버 연결 시간 초과"
+            print(f"CalendarTool 오류: {error_msg}")
+            return error_msg
+        except httpx.ConnectError:
+            error_msg = f"일정 등록 실패: 서버에 연결할 수 없습니다."
+            print(f"CalendarTool 오류: {error_msg}")
+            return error_msg
+        except httpx.RequestError as e:
+            error_msg = f"일정 등록 중 네트워크 오류 발생"
+            print(f"CalendarTool 오류: {error_msg}: {e}")
+            return error_msg
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                error_msg = "오류: 사용자 인증에 실패했습니다. 다시 로그인해주세요."
+                print(f"CalendarTool 인증 오류 (401)")
+            else:
+                error_detail = f"HTTP {e.response.status_code} 오류"
+                try:
+                    error_data = e.response.json()
+                    error_detail += f" - {error_data.get('detail', str(error_data))}"
+                except:
+                    error_detail += f" - {e.response.text[:100]}"
+                error_msg = f"일정 등록 실패: {error_detail}"
+                print(f"CalendarTool 오류: {error_msg}")
+            return error_msg
+        except Exception as e:
+            error_msg = f"일정 등록 중 예상치 못한 오류 발생"
+            print(f"CalendarTool 오류: {error_msg}")
+            import traceback
+            traceback.print_exc()
+            return error_msg
 
 class OpenAIAgentService:
     """OpenAI 에이전트 서비스 클래스"""
@@ -394,6 +684,7 @@ class OpenAIAgentService:
             name="query_classifier_agent",
             model=self.model_name,
             instructions=query_classifier_instructions,
+            input_guardrails=[check_appropriate_content],
             output_type=QueryClassification
         )
 
@@ -403,6 +694,7 @@ class OpenAIAgentService:
             name="data_verification_agent",
             model=self.model_name,
             instructions=create_agent_instructions(context, data_verification_agent_base_instructions),
+            input_guardrails=[check_appropriate_content],
             output_type=DataValidationResult
         )
 
@@ -413,6 +705,7 @@ class OpenAIAgentService:
             model=self.model_name,
             instructions=create_agent_instructions(context, general_agent_base_instructions),
             handoff_description="일반적인 대화를 제공합니다.",
+            tools=[WebSearchTool(user_location={"type": "approximate", "city": "korea"})],
             input_guardrails=[check_appropriate_content],
         )
 
@@ -421,7 +714,7 @@ class OpenAIAgentService:
             name="medical_agent",
             model=self.model_name,
             instructions=create_agent_instructions(context, medical_agent_base_instructions),
-            handoff_description="임신 주차별 의학 정보를 제공합니다.",
+            handoff_description="임신 주차별 의학 정보와 병원 정보를 제공합니다.",
             input_guardrails=[check_appropriate_content],
             output_guardrails=[verify_medical_advice],
             tools=[
@@ -440,7 +733,7 @@ class OpenAIAgentService:
             model=self.model_name,
             instructions=create_agent_instructions(context, policy_agent_base_instructions),
             handoff_description="임신과 출산 관련 정부 지원 정책 정보와 연락처를 제공합니다.",
-            tools=[WebSearchTool(user_location={"type": "approximate", "city": "South Korea"})],
+            tools=[WebSearchTool(user_location={"type": "approximate", "city": "korea"})],
             input_guardrails=[check_appropriate_content],
         )
 
@@ -452,7 +745,7 @@ class OpenAIAgentService:
             handoff_description="임신 주차별 영양 및 식단 정보를 제공합니다.",
             input_guardrails=[check_appropriate_content],
             tools=[
-                WebSearchTool(user_location={"type": "approximate", "city": "South Korea"}),
+                WebSearchTool(user_location={"type": "approximate", "city": "korea"}),
                 FileSearchTool(
                     max_num_results=5,
                     vector_store_ids=[self.vector_store_id],
@@ -469,7 +762,7 @@ class OpenAIAgentService:
             handoff_description="임신 중 안전한 운동 정보를 제공합니다.",
             input_guardrails=[check_appropriate_content],
             tools=[
-                WebSearchTool(user_location={"type": "approximate", "city": "South Korea"}),
+                WebSearchTool(user_location={"type": "approximate", "city": "korea"}),
                 FileSearchTool(
                     max_num_results=5,
                     vector_store_ids=[self.vector_store_id],
@@ -486,7 +779,7 @@ class OpenAIAgentService:
             handoff_description="임신 중 감정 변화와 심리적 건강을 검색을 통해 지원합니다. 혹은 대화중 나온 내용을 바탕으로 격한 감정을 변화가 감지된다면 사용자에게 조언을 제공합니다.",
             input_guardrails=[check_appropriate_content],
             tools=[
-                WebSearchTool(user_location={"type": "approximate", "city": "South Korea"}),
+                WebSearchTool(user_location={"type": "approximate", "city": "korea"}),
                 FileSearchTool(
                     max_num_results=5,
                     vector_store_ids=[self.vector_store_id],
@@ -494,57 +787,63 @@ class OpenAIAgentService:
                 )
             ],
         )
+    def get_calendar_agent(self, context: PregnancyContext) -> Agent:
+            """일정 등록 에이전트를 생성합니다."""
+            return Agent(
+            name="calendar_agent",
+            model=self.model_name,
+            instructions=create_agent_instructions(context, calendar_agent_base_instructions),
+            handoff_description="캘린더에 일정을 등록합니다.",
+            tools=[CalendarTool()],
+            input_guardrails=[check_appropriate_content],
+        )
     
     async def process_query(self, 
-                       query_text: str, 
-                       user_id: str = None,
-                       thread_id: str = None, 
-                       pregnancy_week: int = None,
-                       baby_name: str = None,
-                       stream: bool = False) -> Dict[str, Any]:
+                        query_text: str, 
+                        user_id: str = None,
+                        thread_id: str = None, 
+                        auth_token: Optional[str] = None,
+                        pregnancy_week: int = None,
+                        baby_name: str = None,
+                        high_risk: bool = None,
+                        address: str = None,
+                        stream: bool = False,
+                        today: str = get_current_date()) -> Dict[str, Any]:
+                        
+        
         """
         사용자 질문 처리 및 응답 생성
-        
-        Args:
-            query_text: 사용자 질문 텍스트
-            user_id: 사용자 ID
-            thread_id: 대화 스레드 ID
-            pregnancy_week: 임신 주차 (선택적)
-            baby_name: 태아 이름 (선택적)
-            stream: 스트리밍 응답 여부
-            
-        Returns:
-            생성된 응답 및 메타데이터
         """
         import sys
         import traceback
         
+        run_start_time = time.time()
         print(f"========== process_query 시작 (stream={stream}) ==========")
-        print(f"thread_id in asyncio: {id(asyncio.current_task())}")
         
         try:
             # 컨텍스트 초기화
-            print(f"컨텍스트 초기화: user_id={user_id}, thread_id={thread_id}")
-            print(f"질문: {query_text}")
             context = PregnancyContext(user_id=user_id, thread_id=thread_id)
             
+            # auth_token을 PregnancyContext 객체에 직접 추가
+            if auth_token:
+                context.auth_token = auth_token  # 명시적 속성으로 추가
+                print(f"PregnancyContext에 auth_token 추가됨 (길이: {len(auth_token)})")
+            
+            # 사용자 데이터 로드
             if user_id:
-                print("사용자 데이터 로드 시작")
-                try:
-                    await context.load_user_data_async()
-                    print("사용자 데이터 로드 완료")
-                except Exception as e:
-                    print(f"사용자 데이터 로드 중 오류: {e}")
-                    print(traceback.format_exc())
+                await context.load_user_data_async()
             
             # 추가 정보 설정
             if pregnancy_week:
                 context.update_pregnancy_week(pregnancy_week)
+            if high_risk:
+                context.add_user_info("high_risk", high_risk)
             if baby_name:
                 context.add_user_info("baby_name", baby_name)
-            
+            if address:
+                context.add_user_info("address", address)
+            context.add_user_info("today", today)
             # 훅 초기화
-            print("PregnancyAgentHooks 초기화")
             hooks = PregnancyAgentHooks()
             
             # 질문 분류
@@ -571,8 +870,11 @@ class OpenAIAgentService:
                         # 대체 처리 로직
                         query_type = "general"
                         needs_verification = False
-                        print(f"질문 겨우 분류 완료: {query_type}, {needs_verification}")
+                        print(f"질문 분류 완료: {query_type}, {needs_verification}")
         
+            # 일정 관련 키워드 탐지
+            calendar_keywords = ["일정", "등록", "캘린더", "약속", "기록", "메모", "리마인더", "알림", "추가", "예약"]
+            
             # 분류 결과에 따라 바로 적절한 에이전트 선택
             if query_type == "medical":
                 agent_to_use = self.get_medical_agent(context)
@@ -584,73 +886,55 @@ class OpenAIAgentService:
                 agent_to_use = self.get_exercise_agent(context)
             elif query_type == "emotional":
                 agent_to_use = self.get_emotional_support_agent(context)
+            elif query_type == "calendar":
+                agent_to_use = self.get_calendar_agent(context)
             else:  # general 또는 기타
                 agent_to_use = self.get_general_agent(context)
                 print("general 또는 기타 에이전트 선택됨")
 
             # 에이전트 선택 지점
-            print(f"[{time.time() - start_time:.2f}s] {query_type} 에이전트 선택됨")
+            print(f"[{time.time() - run_start_time:.2f}s] {query_type} 에이전트 선택됨")
 
-            # 선택된 에이전트로 바로 실행
+            # 에이전트 실행 - context 객체 그대로 전달
             if stream:
-                result = Runner.run_streamed(agent_to_use, query_text, context=context, hooks=hooks)
-                
-                # 스트리밍 응답과 함께 needs_verification 정보 전달
-                result.needs_verification = needs_verification
-                result.query_type = query_type
-                return result
-            # else:
-            #     result = await Runner.run(agent_to_use, query_text, context=context, hooks=hooks)
-            #     # 응답 추출
-            #     response_text = result.final_output
-                
-            #     # 검증이 필요한 경우
-            #     if needs_verification:
-            #         # 데이터 검증 에이전트 실행
-            #         verification_agent = self.get_data_verification_agent(context)
-            #         verification_result = await Runner.run(
-            #             verification_agent,
-            #             response_text,
-            #             context=context,
-            #             hooks=hooks
-            #         )
+                try:
+                    result = Runner.run_streamed(
+                        agent_to_use,
+                        query_text,
+                        context=context,  # PregnancyContext 객체 직접 전달
+                        hooks=hooks
+                    )
+                    # 스트리밍 응답과 함께 needs_verification 정보 전달
+                    result.needs_verification = needs_verification
+                    result.query_type = query_type
+                    return result
+                except InputGuardrailTripwireTriggered:
+                    # 가드레일 트립와이어가 발동된 경우 커스텀 스트리밍 응답 반환
+                    from agents import StreamEvent, ModelChunkEvent
                     
-            #         # 검증 결과 저장
-            #         validation_result = verification_result.final_output
-            #         context.add_verification_result(validation_result)
+                    # 가드레일 메시지 생성
+                    guardrail_message = "임신과 관련된 질문이나 대화를 입력해주세요"
                     
-            #         # 검증 정보 추가
-            #         result_data = {
-            #             "response": response_text,
-            #             "verification": {
-            #                 "is_accurate": validation_result.is_accurate,
-            #                 "confidence_score": validation_result.confidence_score,
-            #                 "reason": validation_result.reason,
-            #                 "corrected_information": validation_result.corrected_information
-            #             },
-            #             "metrics": hooks.get_metrics()
-            #         }
-            #     else:
-            #         result_data = {
-            #             "response": response_text,
-            #             "metrics": hooks.get_metrics()
-            #         }
-                
-            #     # 대화 내역 저장
-            #     context.add_conversation(query_text, response_text)
-                
-            #     # DB에 대화 저장
-            #     conversation = await context.save_to_db_async(query_text, response_text)
-            #     if conversation:
-            #         result_data["conversation_id"] = conversation.id
-
-            #     return result_data
+                    # 가짜 스트리밍 이벤트 생성
+                    async def guardrail_stream():
+                        yield StreamEvent(type="start")
+                        yield ModelChunkEvent(content=guardrail_message)
+                        yield StreamEvent(type="end")
+                    
+                    # 스트리밍 응답 객체 생성
+                    from agents import StreamingAgentOutput
+                    result = StreamingAgentOutput(stream=guardrail_stream())
+                    result.needs_verification = needs_verification
+                    result.query_type = query_type
+                    return result
         except Exception as e:
             print(f"process_query 전역 예외: {e}")
             print(traceback.format_exc())
             raise e
         finally:
             print(f"========== process_query 종료 ==========")
+
+
 
 # 서비스 인스턴스 생성
 openai_agent_service = OpenAIAgentService() 

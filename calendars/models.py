@@ -3,6 +3,8 @@ import uuid
 from accounts.models import User, Pregnancy
 from sorl.thumbnail import get_thumbnail
 import os
+# PostgreSQL의 JSONField 대신 Django 기본 JSONField 사용
+from django.db.models import JSONField
 
 
 
@@ -23,11 +25,17 @@ class Event(models.Model):
         ('other', '기타'),
     ]
 
-    RECURRENCE_PATTERNS = [
-        ('daily', '매일'),
-        ('weekly', '매주'),
-        ('monthly', '매월'),
-        ('yearly', '매년'),
+    EVENT_COLORS = [
+        ('#FFD600', '노랑'),
+        ('#FF6B6B', '빨강'),
+        ('#4ECDC4', '청록'),
+        ('#45B7D1', '하늘'),
+        ('#96CEB4', '민트'),
+        ('#FFEEAD', '연한 노랑'),
+        ('#D4A5A5', '연한 빨강'),
+        ('#9B59B6', '보라'),
+        ('#3498DB', '파랑'),
+        ('#2ECC71', '초록'),
     ]
 
     event_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -41,36 +49,33 @@ class Event(models.Model):
         }
     )
     description = models.TextField(blank=True, null=True, verbose_name='설명')
-    event_day = models.DateField(verbose_name='일정 날짜')
+    start_date = models.DateField(verbose_name='시작 날짜')
+    end_date = models.DateField(verbose_name='종료 날짜', null=True, blank=True)
     start_time = models.TimeField(blank=True, null=True, verbose_name='시작 시간')
     end_time = models.TimeField(blank=True, null=True, verbose_name='종료 시간')
     event_type = models.CharField(max_length=20, choices=EVENT_TYPES, default='other', verbose_name='일정 유형')
-    is_recurring = models.BooleanField(default=False, verbose_name='반복 여부')
-    recurrence_pattern = models.CharField(
-        max_length=50,
-        choices=RECURRENCE_PATTERNS,
-        blank=True,
-        null=True,
-        verbose_name='반복 패턴'
+    recurrence_rules = JSONField(
+        null=True, 
+        blank=True, 
+        verbose_name='반복 규칙',
+        help_text='{"pattern": "daily/weekly/monthly/yearly", "until": "2024-12-31", "exceptions": ["2024-06-15"]}'
+    )
+    event_color = models.CharField(
+        max_length=7,
+        choices=EVENT_COLORS,
+        default='#FFD600',
+        verbose_name='일정 색상'
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    parent_event = models.ForeignKey(
-        'self',
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name='recurring_events',
-        verbose_name='원본 일정'
-    )
 
     class Meta:
-        ordering = ['event_day', 'start_time']
+        ordering = ['start_date', 'start_time']
         verbose_name = '일정'
         verbose_name_plural = '일정들'
 
     def __str__(self):
-        return f"{self.event_day} - {self.title}"
+        return f"{self.start_date} - {self.title}"
 
 
 class DailyConversationSummary(models.Model):

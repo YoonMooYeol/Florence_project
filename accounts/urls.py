@@ -8,8 +8,9 @@ from .views import (
     UserDetailView, UpdateUserInfoView, ChangePasswordView, PasswordResetViewSet,
     PasswordResetCheckViewSet, PasswordResetConfirmViewSet, KakaoLoginCallbackView,
     NaverLoginCallbackView, GoogleLoginCallbackView, FindUsernameAPIView, RegisterSendEmailView,
-    RegisterCheckView, FollowUnfollowView, FollowListView, FollowersListView, RetrieveUserByEmailView,
-    PhotoViewSet, DeleteAccountView
+    RegisterCheckView, FollowUnfollowView, FollowersListView, RetrieveUserByUserView,
+    PhotoViewSet, DeleteAccountView, FollowListView, CheckEmailDuplicateView, CheckUsernameDuplicateView,
+    CheckPhoneNumberDuplicateView
 )
 
 pregnancy_router = DefaultRouter()
@@ -55,10 +56,14 @@ urlpatterns = [
     path('follow-list/following/', FollowListView.as_view(), name='following-list'),
     path('follow-list/followers/', FollowersListView.as_view(), name='followers-list'),
 
-    path('search/', RetrieveUserByEmailView.as_view(), name='search'),  # 이메일로 사용자 검색
+    path('search/', RetrieveUserByUserView.as_view(), name='search'),  # username으로 사용자 검색
 
     path('users/me/',include(profile_image_router.urls)),
 
     path('users/me/delete-account/', DeleteAccountView.as_view(), name='delete-account'),
+
+    path('register/check-username/', CheckUsernameDuplicateView.as_view(), name='check-username'),
+    path('register/check-email/', CheckEmailDuplicateView.as_view(), name='check-email'),
+    path('register/check-phone-number/', CheckPhoneNumberDuplicateView.as_view(), name='check-phone-number'),
 
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

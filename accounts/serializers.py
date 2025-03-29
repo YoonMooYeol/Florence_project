@@ -6,24 +6,24 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True)
     image = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = User
         fields = ['user_id', 'username', 'name', 'email', 'phone_number', 'password', 'password_confirm',
                   'gender', 'is_pregnant', 'address', 'image'
-                ]
+                  ]
         read_only_fields = ['user_id']
-    
+
     def validate(self, data):
         # 비밀번호 확인 검증
         if data.get('password') != data.get('password_confirm'):
             raise serializers.ValidationError({"password": "비밀번호가 일치하지 않습니다."})
         return data
-    
+
     def create(self, validated_data):
         # # password_confirm 필드 제거
         # validated_data.pop('password_confirm', None)
-        
+
         # # User 생성
         # user = User.objects.create_user(
         #     username=validated_data['username'],
@@ -31,7 +31,7 @@ class UserSerializer(serializers.ModelSerializer):
         #     name=validated_data['name'],
         #     password=validated_data['password']
         # )
-        
+
         # # 추가 필드 설정
         # if 'phone_number' in validated_data:
         #     user.phone_number = validated_data['phone_number']
@@ -41,19 +41,19 @@ class UserSerializer(serializers.ModelSerializer):
         #     user.is_pregnant = validated_data['is_pregnant']
         # if 'address' in validated_data:
         #     user.address = validated_data['address']
-        
+
         # user.save()
         # return user
 
-            # password_confirm 필드 제거
+        # password_confirm 필드 제거
         validated_data.pop('password_confirm', None)
-        
+
         # 선택적 필드들을 미리 처리
         phone_number = validated_data.pop('phone_number', None)
         gender = validated_data.pop('gender', None)
         is_pregnant = validated_data.pop('is_pregnant', False)
         address = validated_data.pop('address', None)
-        
+
         # User 생성 시 모든 필드를 한번에 전달
         user = User.objects.create_user(
             username=validated_data['username'],
@@ -84,8 +84,8 @@ class LoginSerializer(serializers.Serializer):
 class PregnancySerializer(serializers.ModelSerializer):
     class Meta:
         model = Pregnancy
-        fields = ['pregnancy_id', 'baby_name', 'due_date', 
-                 'current_week', 'created_at', 'updated_at', 'high_risk', 'is_active']
+        fields = ['pregnancy_id', 'baby_name', 'due_date',
+                  'current_week', 'created_at', 'updated_at', 'high_risk', 'is_active']
         read_only_fields = ['pregnancy_id', 'created_at', 'updated_at']
 
     def validate_current_week(self, value):
@@ -125,11 +125,11 @@ class ChangePasswordSerializer(serializers.Serializer):
         # 새 비밀번호 일치 여부 확인
         if data.get('new_password') != data.get('new_password_confirm'):
             raise serializers.ValidationError({"new_password": "새 비밀번호가 일치하지 않습니다."})
-        
+
         # 현재 비밀번호와 새 비밀번호가 같은지 확인
         if data.get('current_password') == data.get('new_password'):
             raise serializers.ValidationError({"new_password": "현재 비밀번호와 새 비밀번호가 같습니다."})
-        
+
         return data
 
 
@@ -213,15 +213,15 @@ class FollowUserSerializer(serializers.ModelSerializer):
     # 팔로워와 팔로잉 사용자의 상세 정보를 포함시키기 위한 필드
     follower_detail = serializers.SerializerMethodField()
     following_detail = serializers.SerializerMethodField()
-    
+
     # 현재 로그인한 사용자가 이 사용자를 팔로우하고 있는지 여부
     is_following = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Follow
         fields = ['id', 'follower', 'following', 'follower_detail', 'following_detail', 'is_following']
         read_only_fields = ['id', 'created_at']
-    
+
     def get_follower_detail(self, obj):
         """팔로워 사용자의 상세 정보를 반환"""
         return {
@@ -229,7 +229,7 @@ class FollowUserSerializer(serializers.ModelSerializer):
             'name': obj.follower.name,
             'email': obj.follower.email
         }
-        
+
     def get_following_detail(self, obj):
         """팔로잉 사용자의 상세 정보를 반환"""
         return {
@@ -237,17 +237,17 @@ class FollowUserSerializer(serializers.ModelSerializer):
             'name': obj.following.name,
             'email': obj.following.email
         }
-    
+
     def get_is_following(self, obj):
         """현재 로그인한 사용자가 이 사용자를 팔로우하고 있는지 여부"""
         request = self.context.get('request')
         if not request or not request.user.is_authenticated:
             return False
-            
+
         # 팔로잉 탭에서는 following 사용자를 로그인 사용자가 팔로우하는지 확인 (항상 True)
         # 팔로워 탭에서는 follower 사용자를 로그인 사용자가 팔로우하는지 확인
         user_to_check = None
-        
+
         # URL 패턴으로 현재 보고 있는 탭 확인
         if 'followers' in request.path:
             # 팔로워 탭: 나의 팔로워들을 내가 팔로우하는지 확인
@@ -255,9 +255,9 @@ class FollowUserSerializer(serializers.ModelSerializer):
         else:
             # 팔로잉 탭: 항상 True (내가 팔로우하고 있기 때문)
             return True
-            
+
         return Follow.objects.filter(
-            follower=request.user, 
+            follower=request.user,
             following=user_to_check
         ).exists()
 
@@ -299,14 +299,3 @@ class PhotoSerializer(serializers.ModelSerializer):
             validated_data.pop('image', None)  # 새 이미지가 없으면 'image' 필드 제거 (기존 이미지 유지)
 
         return super().update(instance, validated_data)
-
-
-
-
-
-
-
-
-
-
-
