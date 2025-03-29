@@ -1,5 +1,7 @@
 # 👶🏻 Florence Project _ 누리달
 
+[➡️ 누리달 SA문서 바로가기](https://www.notion.so/teamsparta/SA-1c52dc3ef5148083bf24ed161fc11999?pvs=4)
+
 <br>
 
 ![누리달](static/nooridal_cover.gif "누리달")
