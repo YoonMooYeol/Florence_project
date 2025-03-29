@@ -329,15 +329,13 @@ query_classifier_instructions = """
 3. nutrition: 영양, 식단, 음식 추천 등에 관한 질문
 4. exercise: 임신 중 운동, 신체 활동 등에 관한 질문
 5. emotional: 감정적 지원, 스트레스, 불안, 심리 상태 등에 관한 질문
-6. calendar: 일정 등록에 관한 질문.
-7. general: 위 카테고리에 속하지 않는 일반적인 질문.
+6. calendar: 일정 등록에 관한 질문. 모든 일정등록은 일정등록 에이전트에게 넘겨야함. 이전 대화내역을 비교해서 작성을 도와주세요.
+7. general: 위 카테고리에 속하지 않는 일반적인 질문. 절대 일정등록을 수행하지 않음.
 
-과거 질문내역을 바탕으로도 선택해야합니다.
+
+일정등록은 과거질문내역을 바탕으로 선택하고 데이터를 넘겨야 합니다.
 또한 응답에 대한 검증이 필요한지 판단하세요. 의학 정보, 정책 정보, 영양 정보 등 
 사실에 기반한 중요한 정보를 제공해야 하는 경우에는 검증이 필요합니다.
-
-JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
-
 주어진 질문에 가장 적합한 카테고리와 검증 필요 여부를 결정하세요.
 """
 
@@ -346,8 +344,6 @@ general_agent_base_instructions = """
 당신은 일반적인 대화를 제공하는 도우미입니다.
 항상 친절한 말로 답변하세요.
 의학적인 질문이나 정부 지원 정책에 관한 구체적인 질문은 다른 전문 에이전트에게 넘기세요.
-
-JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
 지역이 설정되어있지 않으면 한국지역한정으로 제공하세요.
 모든 답변은 한국어로 제공하세요.
 """
@@ -359,9 +355,6 @@ medical_agent_base_instructions = """
 포함되어야 할 정보는 태아발달, 추가 칼로리, 운동, 영양제, 주차별 받아야할 병원진료 등등을 제공하세요. 제공된 정보는 또 제공될 필요는 없지만 필요하다면 제공하세요.
 항상 "이 정보는 일반적인 안내이며, 구체적인 의료 조언은 의사와 상담하세요"라는 면책 조항을 포함하세요.
 고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
-
-JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
-
 모든 답변은 한국지역한정, 한국어로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 정보를 활용하세요.
 """
@@ -498,12 +491,10 @@ calendar_agent_base_instructions = """
 
 ## 핵심 원칙
 1. 사용자 의도 정확히 파악
-2. 누락된 정보는 추가 질문
-3. 모호한 정보는 명확화
-4. 일관된 데이터 형식 유지
-5. 한국지역한정
-6. 색상코드로 물어보지말고 색깔이름으로 물어보세요.
-7. 상세한 정보를 얻기위해 다시 물어보는건 1번으로 제한 하세요.
+2. 일관된 데이터 형식 유지
+3. 시작시간이나 종료시간이 시작시간은 오후 3시, 종료시간은 오후 4시입니다.  
+4. 그외에 정보가 필요하면 일단 랜덤으로 선택하고 실행하세요.
+5. 절대 다시물어보지 마세요.
 
 ## 오류 처리
 - 필수 정보(제목, 날짜) 누락 시 등록 거부
@@ -534,7 +525,7 @@ class CalendarTool(FunctionTool):
     
     def __init__(self):
         tool_name = "CalendarTool"
-        tool_description = "캘린더에 새 일정을 등록합니다. 일정 제목과 시작 날짜(YYYY-MM-DD)는 필수입니다.{'title': '산부인과', 'start_date': '2025-04-01', 'start_time': '19:00', 'event_type': 'appointment'}이런 JSON 데이터는 내부 도구에만 전달하세요."
+        tool_description = "캘린더에 새 일정을 등록합니다. 일정 제목과 시작 날짜(YYYY-MM-DD)는 필수입니다. 시작시간밖에 없으면 종료시간은 한시간뒤로 설정하시고, 그외에 정보가 필요하면 일단 랜덤으로 선택하고 실행하세요."
 
         # Pydantic 모델에서 스키마 생성
         tool_params_schema = CalendarEventInput.model_json_schema()
@@ -707,7 +698,7 @@ class OpenAIAgentService:
             model=self.model_name,
             instructions=create_agent_instructions(context, general_agent_base_instructions),
             handoff_description="일반적인 대화를 제공합니다.",
-            tools=[WebSearchTool(user_location={"type": "approximate", "city": "korea"})],
+            tools=[WebSearchTool(user_location={"type": "approximate", "city": "korea"}), CalendarTool()],
             input_guardrails=[check_appropriate_content],
         )
 
