@@ -1,6 +1,6 @@
 # 🌙 누리달: AI 기반 산전 관리 시스템 
 
-![누리달](https://postfiles.pstatic.net/MjAyNTAzMjlfMTcw/MDAxNzQzMjIyMjUyNzg5.5wjLzGK03CsYpPl3XCMqmZvGJ0jSMo3bsRzNdwoHErAg.LqYbKBRG9KmA6b9k8qcpdPrAybgqNs-zlrZi2oJS5Igg.GIF/%EB%88%84%EB%88%84%EB%A6%AC%EB%A6%AC%EB%8B%AC%EB%8B%AC.gif?type=w3840)
+![누리달](https://files.mybox.naver.com/file/download.api?resourceKey=YWdlY3Jvc3N8MzQ3MjU5NjcxODY1NDc4NzQyNHxGfDA)
 
 [➡️ 누리달 홈페이지 바로가기](https://www.nooridal.com/)
 
