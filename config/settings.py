@@ -35,7 +35,7 @@ django_env = os.environ.get('DJANGO_ENV')
 # SECURITY WARNING: keep the secret key used in production secret!
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['*']
 # 만약 www.nooridal.com도 사용한다면:
