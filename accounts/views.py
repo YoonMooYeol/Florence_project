@@ -29,7 +29,7 @@ from django.core.mail import get_connection, EmailMultiAlternatives
 
 from django.contrib.auth import logout
 
-from calendars.models import BabyDiary
+from calendars.models import BabyDiary, Event
 from .serializers import (
     UserSerializer, LoginSerializer, PregnancySerializer, UserUpdateSerializer, ChangePasswordSerializer,
     PasswordResetSerializer, PasswordResetConfirmSerializer, FindUsernameSerializer, PasswordResetCheckSerializer,
@@ -378,7 +378,64 @@ class PregnancyViewSet(viewsets.ModelViewSet):
         return Pregnancy.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        pregnancy = serializer.save(user=self.request.user)
+        
+        # 출산예정일이 있는 경우 Event 테이블에 일정 추가
+        if pregnancy.due_date:
+            self._create_or_update_due_date_event(pregnancy)
+
+    def perform_update(self, serializer):
+        pregnancy = serializer.instance
+        old_due_date = pregnancy.due_date
+        pregnancy = serializer.save()
+        
+        # 출산예정일이 변경된 경우
+        if pregnancy.due_date != old_due_date:
+            if pregnancy.due_date:
+                # 출산예정일이 있으면 이벤트 생성 또는 업데이트
+                self._create_or_update_due_date_event(pregnancy)
+            else:
+                # 출산예정일이 삭제된 경우 관련 이벤트도 삭제
+                self._delete_due_date_event(pregnancy)
+
+    def perform_destroy(self, instance):
+        # 임신 정보 삭제 전에 관련 이벤트 삭제
+        self._delete_due_date_event(instance)
+        instance.delete()
+    
+    def _create_or_update_due_date_event(self, pregnancy):
+        """임신 정보의 출산예정일을 기반으로 이벤트 생성 또는 업데이트"""
+        # 기존 이벤트가 있는지 확인
+        event = Event.objects.filter(
+            user=pregnancy.user,
+            title='출산 예정일',
+            event_type='appointment',
+        ).first()
+        
+        if event:
+            # 기존 이벤트 업데이트
+            event.start_date = pregnancy.due_date
+            event.end_date = pregnancy.due_date
+            event.save()
+        else:
+            # 새 이벤트 생성
+            Event.objects.create(
+                user=pregnancy.user,
+                title='🤍출산 예정일🤍',
+                description=f'{pregnancy.baby_name or "아기"}의 출산 예정일입니다 😊',
+                start_date=pregnancy.due_date,
+                end_date=pregnancy.due_date,
+                event_type='appointment',  # 병원 예약 타입으로 설정
+                event_color='#FFD600',
+            )
+    
+    def _delete_due_date_event(self, pregnancy):
+        """임신 정보와 관련된 출산예정일 이벤트 삭제"""
+        Event.objects.filter(
+            user=pregnancy.user,
+            title='출산 예정일',
+            event_type='appointment',
+        ).delete()
 
 
 class KakaoLoginCallbackView(APIView):
