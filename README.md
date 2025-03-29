@@ -17,13 +17,15 @@
 ### 3. [설치 및 설정](#설치-및-설정)
 ### 4. [실행 방법](#실행-방법)
 ### 5. [프로젝트 구조](#프로젝트-구조)
-### 6. [Process Flow](#process-flow)
-### 7. [Service Architecture](#service-architecture)
-### 8. [ERD (Entity Relationship Diagram)](#erd-entity-relationship-diagram)
-### 9. [GitHub Link](#github-link)
-### 10. [누리달만의 협업방식](#누리달만의-협업방식)
-### 11. [문제 해결](#문제-해결)
-### 12. [성과 및 회고](#성과-및-회고)
+### 6. [key-summary](#Key-Summary)
+### 7. [Process Flow](#process-flow)
+### 8. [Service Architecture](#service-architecture)
+### 9. [Wire Frame](#Wire-Frame)
+### 10. [ERD (Entity Relationship Diagram)](#erd-entity-relationship-diagram)
+### 11. [GitHub Link](#github-link)
+### 12. [누리달만의 협업방식](#누리달만의-협업방식)
+### 13. [문제 해결](#문제-해결)
+### 14. [성과 및 회고](#성과-및-회고)
 
 <br>
 
@@ -137,6 +139,32 @@ Florence_project/
 └── requirements.txt          # Python 의존성
 ```
 
+## key summary
+
+---
+## Key Summary
+
+### 1. AI Agent Optimization
+**`LangChain → LangGraph → AI Agent`**  
+
+>**기존 문제점: 정보 부정확성, 느린 처리 속도**  
+> 
+>**개선 과정: `LangChain`에서 `LangGraph`로의 전환을 통해 정보 흐름을 더 정확하게 제어하고,  
+> `AI Agent`가 처리 속도를 개선하도록 최적화**  
+> 
+>**최종 결과: 속도 개선과 더 정확한 결과 도출 (약간의 비용 증가)**
+
+### 2. Task Automation with Celery & Celery Beat
+**`Celery & Celery Beat 적용`**
+>**LLM 대화 요약 자동화: 대화 내용을 실시간으로 요약하여 기록하고, 분석하는 기능을 자동화**  
+> 
+>**사용자 정보 업데이트 자동화: 사용자의 상호작용을 바탕으로 데이터를 자동으로 업데이트하고 관리**  
+> 
+>**백그라운드 작업 관리 효율성 증가   
+> -> `Celery`를 통해 비동기적으로 작업을 처리하며, `Celery Beat`를 이용해 일정한 주기로 작업을 실행하여 효율성 극대화**  
+> 
+>**작업 실패를 자동으로 재시도하거나, 알림 시스템을 통해 문제를 추적 가능**
+
 ## 🌊 Process Flow
 
 ---
@@ -152,8 +180,12 @@ Florence_project/
 ## 🦾 Service Architecture
 
 ---
-![누리달](static/service_architecture.png "service-architecture")  
+![누리달](static/service_architecture.png "service-architecture")
 
+## 🎞️ Wire Frame
+
+---
+![누리달](static/wire.GIF "wire-frame")
 
 ## 💾 ERD (Entity Relationship Diagram)
 
@@ -194,7 +226,8 @@ Florence_project/
 ## 잘된 점
 
 ### 맞춤형 AI 에이전트 `플로렌스` 구축
-- 태명, 임신 주차, 고위험 임신 여부 및 사용자 컨디션 등 다양한 정보를 바탕으로 사용자 개개인에게 최적화된 정보를 제공
+- 태명, 임신 주차, 고위험 임신 여부 및 사용자 컨디션 등 다양한 정보를 바탕으로 사용자 개개인에게 최적화된 정보를 제공  
+
 - 대화 중 사용자가 추가하고 싶은 일정이 있을 경우 에이전트가 자동으로 일정을 등록하여 편의성 향상
 - 감성적이고 공감 능력이 뛰어난 에이전트를 구현하여 정서적 지원 제공
 
