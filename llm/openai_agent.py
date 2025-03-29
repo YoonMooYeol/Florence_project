@@ -622,7 +622,7 @@ class CalendarTool(FunctionTool):
                     self.api_endpoint,
                     json=payload,
                     headers=headers,
-                    timeout=15.0
+                    timeout=120
                 )
                 print(f"CalendarTool API 응답 상태: {response.status_code}")
                 response.raise_for_status()
