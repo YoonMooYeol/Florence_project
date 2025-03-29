@@ -348,7 +348,7 @@ general_agent_base_instructions = """
 의학적인 질문이나 정부 지원 정책에 관한 구체적인 질문은 다른 전문 에이전트에게 넘기세요.
 
 JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
-
+지역이 설정되어있지 않으면 한국지역한정으로 제공하세요.
 모든 답변은 한국어로 제공하세요.
 """
 
@@ -362,7 +362,7 @@ medical_agent_base_instructions = """
 
 JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
 
-모든 답변은 한국어로 제공하세요.
+모든 답변은 한국지역한정, 한국어로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 정보를 활용하세요.
 """
 
@@ -371,9 +371,6 @@ data_verification_agent_base_instructions = """
 제공된 정보가 최신 의학 지식에 부합하는지, 과장되거나 잘못된 정보는 없는지 평가하세요.
 신뢰할 수 있는 의학 지식을 바탕으로 정보의 정확성을 0.0부터 1.0 사이의 점수로 평가하세요.
 정확하지 않은 정보가 있다면 해당 부분을 지적하고 수정된 정보를 제공하세요.
-
-JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
-
 모든 평가는 객관적이고 과학적인 근거에 기반해야 합니다.
 """
 
@@ -382,7 +379,7 @@ policy_agent_base_instructions = """
 검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
 맘편한 임신 원스톱 서비스같은 정보를 제공하세요. 그리고 더 많은 정보를 웹검색을 통해 제공하세요. 꼭 지원할수있는 url과 연락처를 제공하세요.
-JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
+모든 답변은 한국어로 제공하세요.
 """
 
 nutrition_agent_base_instructions = """
@@ -390,7 +387,8 @@ nutrition_agent_base_instructions = """
 검색이나 데이터를 가져와야할때는 WebSearchTool로 검색을 진행하세요.
 임신 주차에 따라 필요한 영양소, 권장 식품, 주의해야 할 식품 등에 대한 정보를 제공하세요.
 모든 답변은 한국어로 제공하세요.
-FileSearchTool에서 가져온 임신 주차별 영양 정보를 활용하세요.{'title': '산부인과', 'start_date': '2025-04-01', 'start_time': '19:00', 'event_type': 'appointment'}이런 JSON 데이터는 내부 도구에만 전달하세요.
+FileSearchTool에서 가져온 임신 주차별 영양 정보를 활용하세요.
+모든 답변은 한국어로 제공하세요.
 """
 
 exercise_agent_base_instructions = """
@@ -399,9 +397,8 @@ exercise_agent_base_instructions = """
 임신 주차에 따른 적절한 운동 유형, 강도, 주의사항 등을 안내하세요.
 간단한 스트레칭이나 요가 동작도 설명할 수 있습니다.
 고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
-모든 답변은 한국어로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 운동 정보를 활용하세요.
-{'title': '산부인과', 'start_date': '2025-04-01', 'start_time': '19:00', 'event_type': 'appointment'}이런 JSON 데이터는 내부 도구에만 전달하세요.
+모든 답변은 한국어로 제공하세요.
 """
 
 emotional_agent_base_instructions = """
@@ -410,9 +407,8 @@ emotional_agent_base_instructions = """
 또는 임신 중 흔히 겪는 감정 변화, 스트레스 관리법, 심리적 안정을 위한 조언을 웹검색을 통해 제공하세요.
 공감하는 태도로 따뜻한 지원을 제공하되, 전문적인 심리 상담이 필요한 경우는 전문가의 연락처를 권유하세요.
 고위험 임신이라면 고위험 임신에 대한 정보를 추가로 제공하세요.
-모든 답변은 한국어로 제공하세요.
 FileSearchTool에서 가져온 임신 주차별 감정 정보를 활용하세요.
-JSON 데이터는 내부 도구에만 전달하세요. 사용자에게 스트리밍하지 않습니다.
+모든 답변은 한국어로 제공하세요.
 """
 
 calendar_agent_base_instructions = """
@@ -505,6 +501,7 @@ calendar_agent_base_instructions = """
 2. 누락된 정보는 추가 질문
 3. 모호한 정보는 명확화
 4. 일관된 데이터 형식 유지
+5. 한국지역한정
 
 ## 오류 처리
 - 필수 정보(제목, 날짜) 누락 시 등록 거부
@@ -708,7 +705,7 @@ class OpenAIAgentService:
             model=self.model_name,
             instructions=create_agent_instructions(context, general_agent_base_instructions),
             handoff_description="일반적인 대화를 제공합니다.",
-            tools=[WebSearchTool(user_location={"type": "approximate", "city": context.user_info["address"]})],
+            tools=[WebSearchTool(user_location={"type": "approximate", "city": "korea"})],
             input_guardrails=[check_appropriate_content],
         )
 
@@ -736,7 +733,7 @@ class OpenAIAgentService:
             model=self.model_name,
             instructions=create_agent_instructions(context, policy_agent_base_instructions),
             handoff_description="임신과 출산 관련 정부 지원 정책 정보와 연락처를 제공합니다.",
-            tools=[WebSearchTool(user_location={"type": "approximate", "city": context.user_info["address"]})],
+            tools=[WebSearchTool(user_location={"type": "approximate", "city": "korea"})],
             input_guardrails=[check_appropriate_content],
         )
 
@@ -748,7 +745,7 @@ class OpenAIAgentService:
             handoff_description="임신 주차별 영양 및 식단 정보를 제공합니다.",
             input_guardrails=[check_appropriate_content],
             tools=[
-                WebSearchTool(user_location={"type": "approximate", "city": context.user_info["address"]}),
+                WebSearchTool(user_location={"type": "approximate", "city": "korea"}),
                 FileSearchTool(
                     max_num_results=5,
                     vector_store_ids=[self.vector_store_id],
@@ -765,7 +762,7 @@ class OpenAIAgentService:
             handoff_description="임신 중 안전한 운동 정보를 제공합니다.",
             input_guardrails=[check_appropriate_content],
             tools=[
-                WebSearchTool(user_location={"type": "approximate", "city": context.user_info["address"]}),
+                WebSearchTool(user_location={"type": "approximate", "city": "korea"}),
                 FileSearchTool(
                     max_num_results=5,
                     vector_store_ids=[self.vector_store_id],
@@ -782,7 +779,7 @@ class OpenAIAgentService:
             handoff_description="임신 중 감정 변화와 심리적 건강을 검색을 통해 지원합니다. 혹은 대화중 나온 내용을 바탕으로 격한 감정을 변화가 감지된다면 사용자에게 조언을 제공합니다.",
             input_guardrails=[check_appropriate_content],
             tools=[
-                WebSearchTool(user_location={"type": "approximate", "city": context.user_info["address"]}),
+                WebSearchTool(user_location={"type": "approximate", "city": "korea"}),
                 FileSearchTool(
                     max_num_results=5,
                     vector_store_ids=[self.vector_store_id],
@@ -907,7 +904,6 @@ class OpenAIAgentService:
                         context=context,  # PregnancyContext 객체 직접 전달
                         hooks=hooks
                     )
-                    print(f"스트리밍 결과: {result}")
                     # 스트리밍 응답과 함께 needs_verification 정보 전달
                     result.needs_verification = needs_verification
                     result.query_type = query_type
