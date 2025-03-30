@@ -5,7 +5,6 @@
 [➡️ 누리달 홈페이지 바로가기](https://www.nooridal.com/)
 
 ---
-
 # 💡목차
 
 <br>
@@ -35,7 +34,6 @@
 ### 12. [성과 및 회고](#성과-및-회고)
 <br><br>
 ---
-
 ## 💁🏻‍♀️ 프로젝트 소개
 
 <br>
@@ -78,17 +76,15 @@
 <br><br>
 
 ---
-
 ## 🔗 GitHub Link
 
 [nooridal-FE](https://github.com/YoonMooYeol/Florence_project_FE.git)  
 
 [nooridal-BE](https://github.com/YoonMooYeol/Florence_project.git)  
 
-
+<br><br>
 
 ---
-
 ## 👥 협업방식
 
 <br>
@@ -120,7 +116,6 @@
 <br><br>
 
 ---
-
 ## 🔗 기술 스택
 
 <br>
@@ -135,7 +130,6 @@
 <br><br>
 
 ---
-
 ## ⚙️ 로컬 개발 환경 설정
 
 <br>
@@ -164,7 +158,6 @@ docker-compose logs -f
 
 
 ---
-
 ## 📂 프로젝트 구조
 
 <br>
@@ -197,7 +190,6 @@ Florence_project/
 <br><br>
 
 ---
-
 ## 🌊 Process Flow
 
 <br>
@@ -209,7 +201,6 @@ Florence_project/
 <br><br>
 
 ---
-
 ### 2️⃣ AI agent 플로우
 
 ![](./images/AIAgent플로우.png)
@@ -217,7 +208,6 @@ Florence_project/
 <br><br>
 
 ---
-
 ## 🦾 Service Architecture
 
 ![](./images/서비스아키텍쳐.png)
@@ -225,7 +215,6 @@ Florence_project/
 <br><br>
 
 ---
-
 ## 💾 ERD (Entity Relationship Diagram)
 
 ![](./images/ERD.png)
@@ -233,13 +222,9 @@ Florence_project/
 <br><br>
 
 ---
-
-
 ## 👩🏻‍💻 성과 및 회고  
 
-<br><br>
-
----
+<br>
 
 ## 잘된 점
 
@@ -257,7 +242,6 @@ Florence_project/
 <br><br>
 
 ---
-
 ## 아쉬운 점
 
 ### 에이전트 정보 제공 한계
@@ -276,7 +260,6 @@ Florence_project/
 <br><br>
 
 ---
-
 ## 향후 계획
 
 ### 정확한 최신 정보 제공 체계 구축
