@@ -249,7 +249,7 @@ Florence_project/
 
 ---
 
-### SA문서 링크
+## SA문서 링크
 
 SRS, ERD, Service Flow등을 확인하시려면 [ [누리달 SA문서](https://www.notion.so/teamsparta/SA-1c52dc3ef5148083bf24ed161fc11999) ] 를 참고하세요.
 
