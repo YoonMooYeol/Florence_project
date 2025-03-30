@@ -15,6 +15,7 @@ from django.utils import timezone
 from .models import LLMConversation, ChatManager
 import asyncio
 from asgiref.sync import sync_to_async
+from channels.db import database_sync_to_async
 
 # 환경 변수 로드
 load_dotenv()
@@ -124,62 +125,68 @@ class PregnancyContext:
     
     async def load_user_data_async(self):
         """
-        ORM을 비동기 문맥에서 호출할 수 있도록 sync_to_async 사용.
+        ORM을 비동기 문맥에서 호출할 수 있도록 database_sync_to_async 사용.
         실제 DB에서 사용자 및 임신 정보, 대화 등을 로드.
         """
         from accounts.models import User, Pregnancy
-
-        # 1) user 불러오기 (동기 ORM -> sync_to_async)
-        try:
-            user = await sync_to_async(User.objects.get)(user_id=self.user_id)
-        except User.DoesNotExist:
-            print(f"사용자 데이터 로드 중 오류: user_id={self.user_id} 해당 사용자가 없습니다.")
-            return
-
-        self.user_info = {
-            "name": user.name,
-            "is_pregnant": user.is_pregnant,
-            "email": user.email,
-            "address": user.address,
-            
-        }
-
-        # 2) 임신 정보 불러오기
-        pregnancy = await sync_to_async(Pregnancy.objects.filter(user=user).order_by('-created_at').first)()
-        if pregnancy:
-            self.pregnancy_week = pregnancy.current_week
-            self.user_info["pregnancy_id"] = str(pregnancy.pregnancy_id)
-            self.user_info["due_date"] = pregnancy.due_date.isoformat() if pregnancy.due_date else None
-            self.user_info["baby_name"] = pregnancy.baby_name
-            self.user_info["high_risk"] = pregnancy.high_risk
-            self.user_info["address"] = user.address
-        # 3) 대화 로드 (최근 5개)
         from .models import ChatManager, LLMConversation
-
-        if self.thread_id:
-            # 특정 채팅방
-            chat_room = await sync_to_async(ChatManager.objects.filter(chat_id=self.thread_id).first)()
-            if chat_room:
-                conversations = await sync_to_async(
-                    lambda: list(LLMConversation.objects.filter(chat_room=chat_room).order_by('-created_at')[:5])
-                )()
-            else:
+        
+        @database_sync_to_async
+        def load_all_user_data():
+            try:
+                user = User.objects.get(user_id=self.user_id)
+                
+                # 사용자 정보 수집
+                user_info = {
+                    "name": user.name,
+                    "is_pregnant": user.is_pregnant,
+                    "email": user.email,
+                    "address": user.address,
+                }
+                
+                # 임신 정보 수집
+                pregnancy_week = None
+                pregnancy = Pregnancy.objects.filter(user=user).order_by('-created_at').first()
+                if pregnancy:
+                    pregnancy_week = pregnancy.current_week
+                    user_info["pregnancy_id"] = str(pregnancy.pregnancy_id)
+                    user_info["due_date"] = pregnancy.due_date.isoformat() if pregnancy.due_date else None
+                    user_info["baby_name"] = pregnancy.baby_name
+                    user_info["high_risk"] = pregnancy.high_risk
+                    user_info["address"] = user.address
+                
+                # 대화 로드
                 conversations = []
-        else:
-            # 사용자의 전체 최근 대화
-            conversations = await sync_to_async(
-                lambda: list(LLMConversation.objects.filter(user=user).order_by('-created_at')[:5])
-            )()
-
-        # 4) self.conversation_history 채우기
-        for conv in reversed(conversations):
-            self.conversation_history.append({
-                "user": conv.query,
-                "assistant": conv.response,
-                "created_at": conv.created_at.isoformat()
-            })
-
-        # 5) 대화 요약
+                if self.thread_id:
+                    # 특정 채팅방
+                    chat_room = ChatManager.objects.filter(chat_id=self.thread_id).first()
+                    if chat_room:
+                        conversations = list(LLMConversation.objects.filter(
+                            chat_room=chat_room).order_by('-created_at')[:5])
+                else:
+                    # 사용자의 전체 최근 대화
+                    conversations = list(LLMConversation.objects.filter(
+                        user=user).order_by('-created_at')[:5])
+                
+                # 대화 내역 변환
+                conversation_history = []
+                for conv in reversed(conversations):
+                    conversation_history.append({
+                        "user": conv.query,
+                        "assistant": conv.response,
+                        "created_at": conv.created_at.isoformat()
+                    })
+                    
+                return user_info, pregnancy_week, conversation_history
+                
+            except User.DoesNotExist:
+                print(f"사용자 데이터 로드 중 오류: user_id={self.user_id} 해당 사용자가 없습니다.")
+                return {}, None, []
+        
+        # 하나의 트랜잭션으로 모든 데이터 로드
+        self.user_info, self.pregnancy_week, self.conversation_history = await load_all_user_data()
+        
+        # 대화 요약 업데이트
         self._update_conversation_summary()
     
     def update_pregnancy_week(self, week: int):
@@ -492,7 +499,7 @@ calendar_agent_base_instructions = """
 
 ## 핵심 원칙
 1. 사용자 의도 정확히 파악
-2. 일관된 데이터 형식 유지
+2. 현재 날짜(today)를 기준으로 해야함
 3. 일정 내용은 친구가 써준것처럼 사용자가 행복해지게 써주세요.
 4. 시작시간이나 종료시간이 없으면 시작시간은 오후 3시, 종료시간은 오후 4시입니다.  
 5. 그외에 정보가 필요하면 일단 랜덤으로 선택하고 실행하세요.
