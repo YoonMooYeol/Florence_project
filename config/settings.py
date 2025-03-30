@@ -195,6 +195,7 @@ if django_env == 'development':
             'PASSWORD': os.getenv('MY_DB_PASSWORD'),
             'HOST': os.getenv('MY_DB_HOST'),
             'PORT': os.getenv('MY_DB_PORT'),
+            'CONN_MAX_AGE': 600
         }
     }
 else:
@@ -206,6 +207,7 @@ else:
             'PASSWORD': os.getenv('DB_PASSWORD'),
             'HOST': os.getenv('DB_HOST'),
             'PORT': os.getenv('DB_PORT'),
+            'CONN_MAX_AGE': 600
         }
     }
 
