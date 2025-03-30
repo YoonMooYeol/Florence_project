@@ -278,4 +278,4 @@ Florence_project/
 
 ## 🫧 문제 해결
 
-문제가 발생할 경우 프로젝트 관리자 [누리달](https://github.com/YoonMooYeol) 에게 문의하세요.
+문제가 발생할 경우 프로젝트 [관리자](https://github.com/YoonMooYeol) 에게 문의하세요.
