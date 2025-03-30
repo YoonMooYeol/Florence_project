@@ -139,26 +139,24 @@ Florence_project/
 
 ---
 ### 1️⃣ 전체 플로우
-![누리달](static/service_flow.png "process-flow")  
-
-![누리달](https://files.slack.com/files-tmb/T06B9PCLY1E-F08LL9A5VUG-504f46a88b/image_720.png)
+![](./images/전체플로우.png)
 
 ---
 
 ### 2️⃣ AI agent 플로우
-![누리달](static/ai_agent_flow.png "process-flow")
+![](./images/AIAgent플로우.png)
 
 
 ## 🦾 Service Architecture
 
 ---
-![누리달](static/service_architecture.png "service-architecture")  
+![](./images/서비스아키텍쳐.png)
 
 
 ## 💾 ERD (Entity Relationship Diagram)
 
 ---
-![누리달](static/erd.png "ERD")  
+![](./images/ERD.png)
 
 
 ## 🔗 GitHub Link
