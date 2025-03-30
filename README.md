@@ -5,35 +5,7 @@
 [➡️ 누리달 홈페이지 바로가기](https://www.nooridal.com/)
 
 ---
-# 💡목차
 
-<br>
-
-### 1. [프로젝트 소개](#프로젝트-소개)
-
-### 2. [GitHub Link](#github-link)
-
-### 3. [누리달만의 협업방식](#누리달만의-협업방식)
-
-### 4. [기술 스택](#기술-스택)
-
-### 5. [설치 및 설정](#설치-및-설정)
-
-### 6. [실행 방법](#실행-방법)
-
-### 7. [프로젝트 구조](#프로젝트-구조)
-
-### 8. [Process Flow](#process-flow)
-
-### 9. [Service Architecture](#service-architecture)
-
-### 10. [ERD (Entity Relationship Diagram)](#erd-entity-relationship-diagram)
-
-### 11. [문제 해결](#문제-해결)
-
-### 12. [성과 및 회고](#성과-및-회고)
-<br><br>
----
 ## 💁🏻‍♀️ 프로젝트 소개
 
 <br>
