@@ -140,7 +140,7 @@ Florence_project/
 ---
 ### 1️⃣ 전체 플로우
 ![누리달](static/service_flow.png "process-flow")  
-
+![누리달](https://files.slack.com/files-tmb/T06B9PCLY1E-F08LL9A5VUG-504f46a88b/image_720.png)
 ---
 
 ### 2️⃣ AI agent 플로우
