@@ -12,11 +12,11 @@
 
 ### 1. [프로젝트 소개](#프로젝트-소개)
 
-### 2. [기술 스택](#기술-스택)
+### 2. [GitHub Link](#github-link)
 
-### 3. [GitHub Link](#github-link)
+### 3. [누리달만의 협업방식](#누리달만의-협업방식)
 
-### 4. [누리달만의 협업방식](#누리달만의-협업방식)
+### 4. [기술 스택](#기술-스택)
 
 ### 5. [설치 및 설정](#설치-및-설정)
 
@@ -30,12 +30,10 @@
 
 ### 10. [ERD (Entity Relationship Diagram)](#erd-entity-relationship-diagram)
 
-
-
 ### 11. [문제 해결](#문제-해결)
 
 ### 12. [성과 및 회고](#성과-및-회고)
-
+<br><br>
 ---
 
 ## 💁🏻‍♀️ 프로젝트 소개
@@ -77,17 +75,17 @@
 >- **정부 지원 정보 제공**을 통한 실질적 지원 확대
 >- **AI 맞춤 케어**로 모성 사망률 감소에 기여
 
-<br>
+<br><br>
 
 ---
 
 ## 🔗 GitHub Link
 
-<br>
+[nooridal-FE](https://github.com/YoonMooYeol/Florence_project_FE.git)  
 
-## [nooridal-FE](https://github.com/YoonMooYeol/Florence_project_FE.git)  
+[nooridal-BE](https://github.com/YoonMooYeol/Florence_project.git)  
 
-## [nooridal-BE](https://github.com/YoonMooYeol/Florence_project.git)  
+
 
 ---
 
@@ -119,6 +117,9 @@
 >
 >Git을 활용해 각자 브랜치를 생성해 코드 버전을 관리하고, 협업 시 충돌을 방지하기  
 
+<br><br>
+
+---
 
 ## 🔗 기술 스택
 
@@ -130,6 +131,8 @@
 - 메시지 브로커: Redis
 - 데이터베이스: PostgreSQL
 - 배포: Docker, Docker Compose, AWS Elastic Beanstalk
+
+<br><br>
 
 ---
 
@@ -156,6 +159,9 @@ docker-compose up -d
 # 로그 확인
 docker-compose logs -f
 ```
+
+<br><br>
+
 
 ---
 
@@ -187,6 +193,9 @@ Florence_project/
 ├── .gitignore                # Git 제외 파일
 └── requirements.txt          # Python 의존성
 ```
+
+<br><br>
+
 ---
 
 ## 🌊 Process Flow
@@ -197,11 +206,15 @@ Florence_project/
 
 ![](./images/전체플로우.png)
 
+<br><br>
+
 ---
 
 ### 2️⃣ AI agent 플로우
 
 ![](./images/AIAgent플로우.png)
+
+<br><br>
 
 ---
 
@@ -209,16 +222,22 @@ Florence_project/
 
 ![](./images/서비스아키텍쳐.png)
 
+<br><br>
+
 ---
 
 ## 💾 ERD (Entity Relationship Diagram)
 
 ![](./images/ERD.png)
 
+<br><br>
+
 ---
 
 
 ## 👩🏻‍💻 성과 및 회고  
+
+<br><br>
 
 ---
 
@@ -234,6 +253,8 @@ Florence_project/
 
 - 사용자가 에이전트와 대화한 내용을 자동 요약하여 일별로 정리, 임신 과정의 중요한 순간을 체계적으로 관리 가능
 - 캘린더 탭에서 LLM 대화, 태교 일기, 일정 관리 등 핵심 기능을 통합적으로 관리
+
+<br><br>
 
 ---
 
@@ -252,6 +273,8 @@ Florence_project/
 
 - 주요 일정에 대한 푸시 알림 기능을 개발 일정 내에 구현하지 못함
 
+<br><br>
+
 ---
 
 ## 향후 계획
@@ -264,9 +287,10 @@ Florence_project/
 
 ### 추가 기능 구현
 
-- **달력 UX 개선**
-  - 일정 렌더링 성능 최적화를 통한 지연 현상 개선
-  - 사용자 피드백 기반 UI/UX 개선
+- **달력과 채팅의 상호협력관계 UXUI 개선**
+  - 달력의 모든 기능을 에이전트가 활용하여 일정관리를 할 수 있도록 함
+  - 사용자 설정에 맞춘 일정 자동 등록 ex) 회사일정은 파란색, 개인일정은 노란색 
+<br>
 - **알림 시스템 구축**
   - 오전, 오후 사용자에게 인사를 건네는 친근한 알림 기능
   - 주요 일정에 대한 리마인더 기능
