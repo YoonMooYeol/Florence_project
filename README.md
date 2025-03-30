@@ -247,6 +247,15 @@ Florence_project/
   - 오전, 오후 사용자에게 인사를 건네는 친근한 알림 기능
   - 주요 일정에 대한 리마인더 기능
 
+---
+
+### SA문서 링크
+
+SRS, ERD, Service Flow등을 확인하시려면 [ [누리달 SA문서](https://www.notion.so/teamsparta/SA-1c52dc3ef5148083bf24ed161fc11999) ] 를 참고하세요.
+
+---
+
+
 ## 🫧 문제 해결
 
 문제가 발생할 경우 프로젝트 [관리자](https://github.com/YoonMooYeol) 에게 문의하세요.
