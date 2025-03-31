@@ -294,6 +294,6 @@ SRS, ERD, Service Flow등을 확인하시려면 [ [누리달 SA문서](https://w
 ---
 
 
-## 🫧 문제 해결
+## 💡 문제 해결
 
 문제가 발생할 경우 프로젝트 [관리자](https://github.com/YoonMooYeol) 에게 문의하세요.
